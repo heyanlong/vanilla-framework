@@ -51,11 +51,7 @@ class Environment
                 ++$count;
             } while ($retry && $count < $retryMax);
             if ($retry) {
-                header("Content-type: application/json; charset=utf-8");
-                echo json_encode(['msg' => '网络异常，请稍后再试！', 'code' => 99999]);
-                mail("heyanlong@kaiyuan.net", "haima redis failed.", '!!!');
-                exit;
-//                throw new \Exception("failed to connect redis!");
+                throw new \Exception("failed to connect redis!");
             }
 
             $env = $redisServer->hgetall(trim($path));
