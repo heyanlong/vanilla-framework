@@ -8,82 +8,169 @@
 
 namespace Vanilla\Http;
 
-use Vanilla\Http\Cookie;
-use Vanilla\ParameterBag;
-
 class Response
 {
-    protected $cookies = [];
-    protected $content;
+
+
     protected $headers;
+
+    protected $body;
+
+    protected $version;
+
     protected $statusCode;
 
-    public function __construct($content = '', $status = 200, array $headers = [])
+    protected $statusText;
+
+    protected $charset;
+
+    public static $statusTexts = [
+        100 => 'Continue',
+        101 => 'Switching Protocols',
+        102 => 'Processing',            // RFC2518
+        103 => 'Early Hints',
+        200 => 'OK',
+        201 => 'Created',
+        202 => 'Accepted',
+        203 => 'Non-Authoritative Information',
+        204 => 'No Content',
+        205 => 'Reset Content',
+        206 => 'Partial Content',
+        207 => 'Multi-Status',          // RFC4918
+        208 => 'Already Reported',      // RFC5842
+        226 => 'IM Used',               // RFC3229
+        300 => 'Multiple Choices',
+        301 => 'Moved Permanently',
+        302 => 'Found',
+        303 => 'See Other',
+        304 => 'Not Modified',
+        305 => 'Use Proxy',
+        307 => 'Temporary Redirect',
+        308 => 'Permanent Redirect',    // RFC7238
+        400 => 'Bad Request',
+        401 => 'Unauthorized',
+        402 => 'Payment Required',
+        403 => 'Forbidden',
+        404 => 'Not Found',
+        405 => 'Method Not Allowed',
+        406 => 'Not Acceptable',
+        407 => 'Proxy Authentication Required',
+        408 => 'Request Timeout',
+        409 => 'Conflict',
+        410 => 'Gone',
+        411 => 'Length Required',
+        412 => 'Precondition Failed',
+        413 => 'Payload Too Large',
+        414 => 'URI Too Long',
+        415 => 'Unsupported Media Type',
+        416 => 'Range Not Satisfiable',
+        417 => 'Expectation Failed',
+        418 => 'I\'m a teapot',                                               // RFC2324
+        421 => 'Misdirected Request',                                         // RFC7540
+        422 => 'Unprocessable Entity',                                        // RFC4918
+        423 => 'Locked',                                                      // RFC4918
+        424 => 'Failed Dependency',                                           // RFC4918
+        425 => 'Too Early',                                                   // RFC-ietf-httpbis-replay-04
+        426 => 'Upgrade Required',                                            // RFC2817
+        428 => 'Precondition Required',                                       // RFC6585
+        429 => 'Too Many Requests',                                           // RFC6585
+        431 => 'Request Header Fields Too Large',                             // RFC6585
+        451 => 'Unavailable For Legal Reasons',                               // RFC7725
+        500 => 'Internal Server Error',
+        501 => 'Not Implemented',
+        502 => 'Bad Gateway',
+        503 => 'Service Unavailable',
+        504 => 'Gateway Timeout',
+        505 => 'HTTP Version Not Supported',
+        506 => 'Variant Also Negotiates',                                     // RFC2295
+        507 => 'Insufficient Storage',                                        // RFC4918
+        508 => 'Loop Detected',                                               // RFC5842
+        510 => 'Not Extended',                                                // RFC2774
+        511 => 'Network Authentication Required',                             // RFC6585
+    ];
+
+    public function __construct($status = 200, array $headers = [], $body = null, $version = '1.1', $reason = null)
     {
-        $this->headers = new ParameterBag($headers);
-        $this->statusCode = $status;
-        $this->content = $content;
+        $this->headers = $headers;
+        $this->body = $body;
+        $this->withStatus($status);
+        $this->withProtocolVersion($version);
     }
 
     public function send()
     {
-        foreach ($this->headers->all() as $key => $value) {
-            header($key . ': ' . $value, false, $this->statusCode);
+        header(sprintf('HTTP/%s %s %s', $this->getProtocolVersion(), $this->getStatusCode(), $this->getReasonPhrase()), true, $this->getStatusCode());
+
+        foreach ($this->headers as $name => $value) {
+            header($name . ': ' . $value, false);
         }
 
-        // status
-        header(sprintf('HTTP/%s %s %s', '1.0', $this->statusCode, ''), true, $this->statusCode);
-
-        foreach ($this->cookies as $cookie) {
-            /**
-             * @var $cookie Cookie
-             */
-            setcookie($cookie->getName(), $cookie->getValue(), $cookie->getExpire(), $cookie->getPath(), $cookie->getDomain(), $cookie->getSecure(), $cookie->getHttpOnly());
-        }
-
-        echo $this->content;
+        echo $this->body;
     }
 
-    public function redirect($to, $code = 302)
+
+    public function getProtocolVersion()
     {
-        $this->statusCode = $code;
-        $this->headers->set('Location', $to);
+        return $this->version;
     }
 
-    public function setContent($content)
+    public function withProtocolVersion($version)
     {
-        $this->content = $content;
-        return $this;
-    }
-
-    public function getContent()
-    {
-        return $this->content;
-    }
-
-    public function setHeaders($header)
-    {
-        foreach ($header as $key => $value) {
-            $this->headers->set($key, $value);
-        }
-
+        $this->version = $version;
         return $this;
     }
 
     public function getHeaders()
     {
-        return $this->headers;
+        // TODO: Implement getHeaders() method.
     }
 
-    public function setCookies($cookie)
+    public function hasHeader($name)
     {
-        $this->cookies[] = $cookie;
+        // TODO: Implement hasHeader() method.
+    }
+
+    public function getHeader($name)
+    {
+        // TODO: Implement getHeader() method.
+    }
+
+    public function getHeaderLine($name)
+    {
+        // TODO: Implement getHeaderLine() method.
+    }
+
+    public function withHeader($name, $value = null)
+    {
+        if ($value === null && is_array($name)) {
+            foreach ($name as $item => $v) {
+                $this->headers[$item] = $v;
+            }
+        } else {
+            $this->headers[$name] = $value;
+        }
+
         return $this;
     }
 
-    public function setStatusCode($code)
+    public function withAddedHeader($name, $value)
     {
-        $this->statusCode = $code;
+        // TODO: Implement withAddedHeader() method.
+    }
+
+    public function withoutHeader($name)
+    {
+        // TODO: Implement withoutHeader() method.
+    }
+
+    public function getBody()
+    {
+        return $this->body;
+    }
+
+    public function withBody($body)
+    {
+        $this->body = $body;
         return $this;
     }
 
@@ -92,11 +179,14 @@ class Response
         return $this->statusCode;
     }
 
-    public function json($content, $code = 200)
+    public function withStatus($code, $reasonPhrase = '')
     {
-        $this->headers->set('Content-Type', 'application/json');
-        $this->content = is_array($content)?json_encode($content):$content;
         $this->statusCode = $code;
         return $this;
+    }
+
+    public function getReasonPhrase()
+    {
+        return static::$statusTexts[$this->statusCode];
     }
 }

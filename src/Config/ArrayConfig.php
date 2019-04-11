@@ -17,7 +17,7 @@ class ArrayConfig implements Config
 
     public function __construct($app)
     {
-        $dir = $app['path'] . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'config';
+        $dir = $app['path.config'];
         $handler = opendir($dir);
         $files = [];
         while (($filename = readdir($handler)) !== false) {

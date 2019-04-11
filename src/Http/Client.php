@@ -23,6 +23,7 @@ class Client extends \GuzzleHttp\Client
         $log = [
             'serviceStart' => (new \DateTime())->format('Y-m-d H:i:s.u')
         ];
+        $options['headers']['X-Ca-Traceid'] = uuid('v4', true);
         $options = array_merge(
             [
                 'on_stats' => function (TransferStats $stats) use (&$log, $uri) {
@@ -57,7 +58,7 @@ class Client extends \GuzzleHttp\Client
         $log['serviceEnd'] = (new \DateTime())->format('Y-m-d H:i:s.u');
         $log['result'] = $response->getBody()->getContents();
         $response->getBody()->rewind();
-        info($log);
+        info("http client", $log);
 //        Log::writeRunLog('api calls logging', $log);
         return $response;
     }
