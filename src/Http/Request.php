@@ -60,41 +60,12 @@ class Request implements Input
         return $this->json->all()[$key] ?? $default;
     }
 
-    public function getContent($asResource = false)
+    public function getContent()
     {
-        $currentContentIsResource = is_resource($this->content);
-
-        if (true === $asResource) {
-            if ($currentContentIsResource) {
-                rewind($this->content);
-
-                return $this->content;
-            }
-
-            // Content passed in parameter (test)
-            if (is_string($this->content)) {
-                $resource = fopen('php://temp', 'r+');
-                fwrite($resource, $this->content);
-                rewind($resource);
-
-                return $resource;
-            }
-
-            $this->content = false;
-
-            return fopen('php://input', 'rb');
+        if ($this->content) {
+            return $this->content;
         }
-
-        if ($currentContentIsResource) {
-            rewind($this->content);
-
-            return stream_get_contents($this->content);
-        }
-
-        if (null === $this->content || false === $this->content) {
-            $this->content = file_get_contents('php://input');
-        }
-        return $this->content;
+        return file_get_contents('php://input');
     }
 
     public function get($key, $default = null)
@@ -151,110 +122,14 @@ class Request implements Input
     public function getRequestUri()
     {
         if (null === $this->requestUri) {
-            $this->requestUri = $this->server->get('REQUEST_URI');
-        }
-        return $this->requestUri;
-    }
-
-    public function setContext($key, $val)
-    {
-        $this->context[$key] = $val;
-    }
-
-    public function getContext($key, $default = null)
-    {
-        if (is_null($key)) {
-            return $this->context;
-        } elseif (isset($this->context[$key])) {
-            return $this->context[$key];
-        } elseif (!is_null($default)) {
-            return $default;
-        }
-        return null;
-
-    }
-
-    /**
-     * Gets the HTTP headers.
-     *
-     * @return array
-     */
-    public function getHeaders()
-    {
-        $headers = array();
-        $contentHeaders = array('CONTENT_LENGTH' => true, 'CONTENT_MD5' => true, 'CONTENT_TYPE' => true);
-        $parameters = $this->server->all();
-
-        foreach ($parameters as $key => $value) {
-            if (0 === strpos($key, 'HTTP_')) {
-                $headers[substr($key, 5)] = $value;
-            } // CONTENT_* are not prefixed with HTTP_
-            elseif (isset($contentHeaders[$key])) {
-                $headers[$key] = $value;
+            if (env('PHPUNIT_MODE', false) == false && php_sapi_name() == 'cli') {
+                $this->requestUri = app('command');
+            } else {
+                $this->requestUri = $this->server->get('REQUEST_URI');
             }
         }
-
-        if (isset($parameters['PHP_AUTH_USER'])) {
-            $headers['PHP_AUTH_USER'] = $parameters['PHP_AUTH_USER'];
-            $headers['PHP_AUTH_PW'] = isset($parameters['PHP_AUTH_PW']) ? $parameters['PHP_AUTH_PW'] : '';
-        } else {
-            /*
-             * php-cgi under Apache does not pass HTTP Basic user/pass to PHP by default
-             * For this workaround to work, add these lines to your .htaccess file:
-             * RewriteCond %{HTTP:Authorization} ^(.+)$
-             * RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
-             *
-             * A sample .htaccess file:
-             * RewriteEngine On
-             * RewriteCond %{HTTP:Authorization} ^(.+)$
-             * RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
-             * RewriteCond %{REQUEST_FILENAME} !-f
-             * RewriteRule ^(.*)$ app.php [QSA,L]
-             */
-
-            $authorizationHeader = null;
-            if (isset($parameters['HTTP_AUTHORIZATION'])) {
-                $authorizationHeader = $parameters['HTTP_AUTHORIZATION'];
-            } elseif (isset($parameters['REDIRECT_HTTP_AUTHORIZATION'])) {
-                $authorizationHeader = $parameters['REDIRECT_HTTP_AUTHORIZATION'];
-            }
-
-            if (null !== $authorizationHeader) {
-                if (0 === stripos($authorizationHeader, 'basic ')) {
-                    // Decode AUTHORIZATION header into PHP_AUTH_USER and PHP_AUTH_PW when authorization header is basic
-                    $exploded = explode(':', base64_decode(substr($authorizationHeader, 6)), 2);
-                    if (2 == count($exploded)) {
-                        list($headers['PHP_AUTH_USER'], $headers['PHP_AUTH_PW']) = $exploded;
-                    }
-                } elseif (empty($parameters['PHP_AUTH_DIGEST']) && (0 === stripos($authorizationHeader, 'digest '))) {
-                    // In some circumstances PHP_AUTH_DIGEST needs to be set
-                    $headers['PHP_AUTH_DIGEST'] = $authorizationHeader;
-                    $parameters['PHP_AUTH_DIGEST'] = $authorizationHeader;
-                } elseif (0 === stripos($authorizationHeader, 'bearer ')) {
-                    /*
-                     * XXX: Since there is no PHP_AUTH_BEARER in PHP predefined variables,
-                     *      I'll just set $headers['AUTHORIZATION'] here.
-                     *      http://php.net/manual/en/reserved.variables.server.php
-                     */
-                    $headers['AUTHORIZATION'] = $authorizationHeader;
-                }
-            }
-        }
-
-        if (isset($headers['AUTHORIZATION'])) {
-            return $headers;
-        }
-
-        // PHP_AUTH_USER/PHP_AUTH_PW
-        if (isset($headers['PHP_AUTH_USER'])) {
-            $headers['AUTHORIZATION'] = 'Basic ' . base64_encode($headers['PHP_AUTH_USER'] . ':' . $headers['PHP_AUTH_PW']);
-        } elseif (isset($headers['PHP_AUTH_DIGEST'])) {
-            $headers['AUTHORIZATION'] = $headers['PHP_AUTH_DIGEST'];
-        }
-
-        return $headers;
+        return explode('?', $this->requestUri)[0];
     }
-
 
     public function header($key = null, $default = null)
     {
@@ -274,7 +149,7 @@ class Request implements Input
     {
         $headers = [];
 
-        foreach ($_SERVER as $key => $value) {
+        foreach ($this->server->all() as $key => $value) {
             if (0 === strpos($key, 'HTTP_')) {
                 $headers[$key = str_replace('_', '-', strtolower(substr($key, 5)))] = $value;
             } // drop HTTP_ prefixed;'_' to '-';strtolower

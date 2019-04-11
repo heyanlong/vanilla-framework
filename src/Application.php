@@ -8,26 +8,33 @@
 
 namespace Vanilla;
 
+
 use App\Exceptions\Handler;
-use Pimple\Container;
-use Pimple\ServiceProviderInterface;
+use Monolog\Formatter\LineFormatter;
+use Monolog\Processor\WebProcessor;
 use Predis\Client;
 use Vanilla\Cache\Redis;
 use Vanilla\Config\ArrayConfig;
 use Vanilla\Contracts\Stream\Input;
 use Vanilla\Exceptions\FatalThrowableError;
-use Vanilla\Http\Kernel;
+use Vanilla\Exceptions\MethodNotAllowedHttpException;
+use Vanilla\Exceptions\NotFoundHttpException;
 use Vanilla\Http\Request;
 use Vanilla\Http\Response;
+use Vanilla\Log\AccessHandler;
+use Vanilla\Log\TraceIdProcessor;
 use Vanilla\Routing\Router;
-use Whoops\Handler\PlainTextHandler;
-use Whoops\Handler\PrettyPageHandler;
-use Whoops\Run;
-use Vanilla\Log\Log;
+use Monolog\Logger;
+use Monolog\Handler\StreamHandler;
 
-class Application extends Container
+class Application implements \ArrayAccess
 {
     private static $instance;
+
+    /**
+     * @var Logger
+     */
+    private static $accessLog;
     /**
      * The base path of the application installation.
      *
@@ -35,21 +42,44 @@ class Application extends Container
      */
     protected $basePath;
 
-    protected $binds = [];
+    protected $container = [];
 
+    /**
+     * @var Router
+     */
     protected $router;
 
     protected $input;
 
-    public function __construct($basePath = null)
+    public function __construct($basePath = null, $command = 'help')
     {
         define('BEGIN_TIME', microtime(TRUE));
         $this->basePath = $basePath;
-
+        $this['command'] = $command;
 
         date_default_timezone_set('Asia/Shanghai');
 
-        parent::__construct();
+        $logger = new Logger('vanilla');
+        $loggerLevel = env('APP_LOG_LEVEL', 'debug');
+        $loggerLevelMap = [
+            'debug' => Logger::DEBUG,
+            'info' => Logger::INFO,
+            'notice' => Logger::NOTICE,
+            'warning' => Logger::WARNING
+        ];
+        $logger->pushHandler(new StreamHandler($basePath . '/logs/' . date('Y-m-d') . '/run.log', $loggerLevelMap[$loggerLevel]));
+        $logger->pushHandler(new StreamHandler($basePath . '/logs/' . date('Y-m-d') . '/error.log', Logger::ERROR, false));
+        $logger->pushProcessor(new TraceIdProcessor());
+        $logger->pushProcessor(new WebProcessor());
+        $this['log'] = $logger;
+
+        if (static::$accessLog == null) {
+            static::$accessLog = new Logger('vanilla');
+            static::$accessLog->pushHandler(new AccessHandler($basePath . '/logs/' . date('Y-m-d') . '/access.log', Logger::INFO));
+            static::$accessLog->pushProcessor(new TraceIdProcessor());
+            static::$accessLog->pushProcessor(new WebProcessor());
+            static::$accessLog->info("access log record");
+        }
 
         $this->bootstrapContainer();
         $this->registerErrorHandling();
@@ -57,14 +87,23 @@ class Application extends Container
         static::$instance = $this;
     }
 
-    public function handle(Input $input)
+    public function run()
     {
-        $this->input = $input;
-        $this['request'] = $input;
-        if($input instanceof Request) {
-            $kernel = new Kernel($this);
-            return $kernel->handle();
+        if ($this['request'] instanceof Request) {
+            $input = $this['request'];
+        } else {
+            $input = Request::capture();
+            $this['request'] = $input;
         }
+        if ($input instanceof Input) {
+            $response = $this['router']->dispatch($input);
+            return $response;
+        }
+    }
+
+    public function getBasePath()
+    {
+        return $this->basePath;
     }
 
     public static function getInstance()
@@ -84,7 +123,7 @@ class Application extends Container
         $this['response'] = new Response();
         $this['config'] = new ArrayConfig($this);
         $this['cache'] = $this->cache();
-        $this['router'] = new Router($this);
+        $this['router'] = new Router();
     }
 
     protected function cache()
@@ -95,8 +134,10 @@ class Application extends Container
             if ($cacheConfig['type'] === 'redis') {
                 $config = $cacheConfig['redis'];
                 $config['host'] = explode(',', $config['host']);
-
                 $options = ['replication' => 'sentinel', 'service' => $config['service']];
+                if (isset($config['password']) && !empty($config['password'])) {
+                    $options['parameters']['password'] = $config['password'];
+                }
                 $client = new Client($config['host'], $options);
                 return new Redis($client, $config['prefix']);
             }
@@ -114,7 +155,7 @@ class Application extends Container
 
 //        register_shutdown_function([$this, 'handleShutdown']);
 
-        register_shutdown_function('\Vanilla\Log\Log::save');
+//        register_shutdown_function('\Vanilla\Log\Log::save');
     }
 
     public function handleError($level, $message, $file = '', $line = 0, $context = [])
@@ -134,7 +175,7 @@ class Application extends Container
         try {
 
             $handler->report($e);
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             //
         }
 
@@ -269,5 +310,71 @@ class Application extends Container
         }
 
         $this->binds[$name] = $value;
+    }
+
+    /**
+     * Whether a offset exists
+     * @link https://php.net/manual/en/arrayaccess.offsetexists.php
+     * @param mixed $offset <p>
+     * An offset to check for.
+     * </p>
+     * @return boolean true on success or false on failure.
+     * </p>
+     * <p>
+     * The return value will be casted to boolean if non-boolean was returned.
+     * @since 5.0.0
+     */
+    public function offsetExists($offset)
+    {
+        return isset($this->container[$offset]);
+    }
+
+    /**
+     * Offset to retrieve
+     * @link https://php.net/manual/en/arrayaccess.offsetget.php
+     * @param mixed $offset <p>
+     * The offset to retrieve.
+     * </p>
+     * @return mixed Can return all value types.
+     * @since 5.0.0
+     */
+    public function offsetGet($offset)
+    {
+        return isset($this->container[$offset]) ? $this->container[$offset] : null;
+    }
+
+    /**
+     * Offset to set
+     * @link https://php.net/manual/en/arrayaccess.offsetset.php
+     * @param mixed $offset <p>
+     * The offset to assign the value to.
+     * </p>
+     * @param mixed $value <p>
+     * The value to set.
+     * </p>
+     * @return void
+     * @since 5.0.0
+     */
+    public function offsetSet($offset, $value)
+    {
+        if (is_null($offset)) {
+            $this->container[] = $value;
+        } else {
+            $this->container[$offset] = $value;
+        }
+    }
+
+    /**
+     * Offset to unset
+     * @link https://php.net/manual/en/arrayaccess.offsetunset.php
+     * @param mixed $offset <p>
+     * The offset to unset.
+     * </p>
+     * @return void
+     * @since 5.0.0
+     */
+    public function offsetUnset($offset)
+    {
+        unset($this->container[$offset]);
     }
 }

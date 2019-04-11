@@ -9,6 +9,8 @@
 namespace Vanilla\Validation;
 
 
+use Vanilla\Http\Request;
+
 class Validator
 {
 
@@ -27,6 +29,9 @@ class Validator
 
     public static function make($data, $rule, $messages = [])
     {
+        if ($data instanceof Request) {
+            $data = $data->all();
+        }
         return new Validator($data, $rule, $messages);
     }
 
@@ -39,17 +44,18 @@ class Validator
             foreach ($item as $rule) {
                 try {
                     $pos = strpos($rule, ':');
-                    $params = $pos !== false ? substr($rule, $pos+1) : '';
-                    $method = $pos !== false ? substr($rule, 0,$pos) : $rule;
+                    $params = $pos !== false ? substr($rule, $pos + 1) : '';
+                    $method = $pos !== false ? substr($rule, 0, $pos) : $rule;
                     $this->$method($this->data, $key, $params);
                 } catch (\Exception $e) {
-                    $this->errors[$key][] = $e->getMessage();
+                    $this->errors = $e->getMessage();
+                    return true;
                 }
             }
 
         }
 
-        return count($this->errors);
+        return false;
     }
 
     public function messages()
@@ -59,6 +65,13 @@ class Validator
 
     private function required($data, $key, $params)
     {
+        if (isset($data[$key]) && is_array($data[$key])) {
+            if (count($data[$key]) >= 1) {
+                return;
+            } else {
+                throw new \Exception($this->messages[$key . '.' . __FUNCTION__] ?? $key . ' 必填');
+            }
+        }
         if (isset($data[$key]) && trim($data[$key]) !== '') {
             return;
         }
@@ -99,24 +112,13 @@ class Validator
         }
     }
 
-    private function lenmin($data, $key, $params)
+    private function uuid($data, $key, $params)
     {
-        if (isset($data[$key])) {
-            if (is_string($data[$key]) && mb_strlen($data[$key], 'UTF-8') < $params) {
-                throw new \Exception($this->messages[$key . '.' . __FUNCTION__] ?? $key . ' 不能小于' . $params . '个字符');
-            }
+        if (isset($data[$key]) && preg_match('/[a-f0-9]{8}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{4}\-[a-f0-9]{12}/', $data[$key])) {
             return;
         }
-    }
 
-    private function lenmax($data, $key, $params)
-    {
-        if (isset($data[$key])) {
-            if (is_string($data[$key]) && mb_strlen($data[$key], 'UTF-8') > $params) {
-                throw new \Exception($this->messages[$key . '.' . __FUNCTION__] ?? $key . ' 不能大于' . $params . '个字符');
-            }
-            return;
-        }
+        throw new \Exception($this->messages[$key . '.' . __FUNCTION__] ?? $key . ' 规则验证失败');
     }
 
     private function in($data, $key, $params)
@@ -128,4 +130,17 @@ class Validator
         }
         throw new \Exception($this->messages[$key . '.' . __FUNCTION__] ?? $key . ' 必须为' . $params . '其中一个');
     }
+
+    private function numeric($data, $key, $params)
+    {
+        if (isset($data[$key])) {
+            if (is_numeric($data[$key])) {
+                return;
+            }
+        }
+        throw new \Exception($this->messages[$key . '.' . __FUNCTION__] ?? $key . ' 必须为数字类型');
+    }
+
+
+
 }

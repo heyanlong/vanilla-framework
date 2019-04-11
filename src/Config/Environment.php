@@ -15,16 +15,49 @@ class Environment
 {
     public static function load($path, $merge = [])
     {
-        if (file_exists(PROJECT_DIR . DIRECTORY_SEPARATOR . '.redis')) {
-            $uri = trim(file_get_contents(PROJECT_DIR . DIRECTORY_SEPARATOR . '.redis'));
+        $file = dirname(__DIR__) . '/../../../../.redis';
+        if (file_exists($file)) {
+            $uri = trim(file_get_contents($file));
             $masterName = 'mymaster';
+            $password = '';
             if (strpos($uri, '|') !== false) {
                 [$masterName, $uri] = explode('|', $uri);
+                if (strpos($masterName, '@') !== false) {
+                    $password = substr($masterName, strpos($masterName, '@') + 1, strlen($masterName));
+                    $masterName = substr($masterName, 0, strpos($masterName, '@'));
+                }
             }
 
             $uri = explode(',', $uri);
 
-            $redisServer = new Client($uri, ['replication' => 'sentinel', 'service' => $masterName]);
+            $options = ['replication' => 'sentinel', 'service' => $masterName];
+
+            if ($password != '') {
+                $options['parameters']['password'] = $password;
+            }
+
+            $count = 0;
+            $retryMax = 3;
+            $retry = false;
+
+            do {
+                try {
+                    $redisServer = new Client($uri, $options);
+                    $redisServer->ping();
+                    $retry = false;
+                } catch (\Exception $e) {
+                    $retry = true;
+                }
+                ++$count;
+            } while ($retry && $count < $retryMax);
+            if ($retry) {
+                header("Content-type: application/json; charset=utf-8");
+                echo json_encode(['msg' => '网络异常，请稍后再试！', 'code' => 99999]);
+                mail("heyanlong@kaiyuan.net", "haima redis failed.", '!!!');
+                exit;
+//                throw new \Exception("failed to connect redis!");
+            }
+
             $env = $redisServer->hgetall(trim($path));
 
             $env = array_merge($merge, $env);

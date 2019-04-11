@@ -12,9 +12,21 @@ function app($make = null)
         return \Vanilla\Application::getInstance();
     }
     $app = \Vanilla\Application::getInstance();
-    return $app[$make];
+    if (isset($app[$make])) {
+        return $app[$make];
+    }
+    return null;
 }
-if (! function_exists('env')) {
+
+function json(array $data, $status = 200)
+{
+    return app('response')
+        ->withStatus($status)
+        ->withHeader('Content-Type', 'application/json')
+        ->withBody(json_encode($data));
+}
+
+if (!function_exists('env')) {
 
     function env($key, $default = null)
     {
@@ -71,9 +83,8 @@ function view($template, $params = [])
  */
 function response($content = '', $status = 200, array $headers = array())
 {
-    return app('response')->setStatusCode($status)->setContent($content)->setHeaders($headers);
+    return app('response')->withStatus($status)->withBody($content)->withHeader($headers);
 }
-
 
 
 /**
@@ -87,6 +98,7 @@ function numberFormat($input, $thousandsSep = ',')
     setlocale(LC_MONETARY, 'zh_CN');
     return (string)number_format($input, 2, '.', $thousandsSep);
 }
+
 function config($key = null, $default = null)
 {
     if (null === $key) {
@@ -120,192 +132,52 @@ function session($key = null, $default = null)
 
 }
 
-function delSession($key)
+function uuid($version = 'v4', $request = false)
 {
-    unset($_SESSION[$key]);
-}
-
-/**
- * 删除session
- * @return mixed
- */
-function clearSession()
-{
-//    if (!isset($_SESSION)) {
-//        session_start();
-//    }
-//    // 删除所有 Session 变量
-//    $_SESSION = [];
-//    //判断 cookie 中是否保存 Session ID
-//    if (isset($_COOKIE[session_name()])) {
-//        setcookie(session_name(), '', time() - 3600, '/');
-//    }
-    //彻底销毁 Session
-    $_SESSION = [];
-}
-
-/**
- * 设置全局变量
- * @param $key
- * @param null $value 不传为获取
- * @return mixed|null
- */
-function context($key=null, $value=null)
-{
-    static $parameter;
-    if (empty($parameter)){
-        $parameter = new \Vanilla\ParameterBag([]);
-    }
-    if ($value === null){
-        if ($key === null){
-            return $parameter->all();
-        }
-        return $parameter->get($key);
-    }else {
-        $parameter->set($key,$value);
-    }
-}
-
-/**
- * 模板调用php函数
- * @param $fname 要调用的方法名
- * @param $params 函数所需要的参数
- */
-function php_function($fname,$params)
-{
-    return call_user_func_array($fname,$params);
-}
-
-/**
- * 获取客户端IP地址
- * @param integer $type
- *            返回类型 0 返回IP地址 1 返回IPV4地址数字
- * @param boolean $adv
- *            是否进行高级模式获取（有可能被伪装）
- * @return mixed
- */
-function get_client_ip($type = 0, $adv = false)
-{
-    $type = $type ? 1 : 0;
-    static $ip = null;
-    if ($ip !== null) {
-        return $ip[$type];
+    if (isset($_SERVER[strtoupper('HTTP_X_Ca_Traceid')]) && $request) {
+        return $_SERVER[strtoupper('HTTP_X_Ca_Traceid')];
     }
 
-    if ($adv) {
-        if (isset($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-            $arr = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
-            $pos = array_search('unknown', $arr);
-            if (false !== $pos) {
-                unset($arr[$pos]);
-            }
-            $ip = trim($arr[0]);
-        } elseif (isset($_SERVER['HTTP_CLIENT_IP'])) {
-            $ip = $_SERVER['HTTP_CLIENT_IP'];
-        } elseif (isset($_SERVER['REMOTE_ADDR'])) {
-            $ip = $_SERVER['REMOTE_ADDR'];
-        }
-    } elseif (isset($_SERVER['REMOTE_ADDR'])) {
-        $ip = $_SERVER['REMOTE_ADDR'];
-    }
-    // IP地址合法验证
-    $long = sprintf("%u", ip2long($ip));
-    $ip = $long ? array(
-        $ip,
-        $long
-    ) : array(
-        '0.0.0.0',
-        0
-    );
-    return $ip[$type];
+    $uuid = \Ramsey\Uuid\Uuid::uuid4();
+    return $uuid->toString();
 }
 
-function csrf_token()
+function debug($message, array $context = array())
 {
-    if (!empty($ses = session('_token'))){
-        return $ses;
-    }
-    $csrf = md5(mt_rand(1, 999999) . mt_rand(1, 999999) . mt_rand(1, 999999) . microtime(true));
-    session(['_token'=>$csrf]);
-    return $csrf;
+    app('log')->debug($message, $context);
 }
 
-function ApipaySubmit($sParaTemp)
+function info($message, array $context = array())
 {
-    return App\Repository\Ys\ApipaySubmitRepository::buildRequest($sParaTemp, 'post', '确认');
+    app('log')->info($message, $context);
 }
 
-/**
- * 按type 获取 验证消息
- * @param string $type
- * @return array|bool|null
- */
-function getFeedbackMsgByType($type = 'errors')
+function notice($message, array $context = array())
 {
-    $erMsg = session('feedback.' . $type);
-    if ($erMsg) {
-        delSession('feedback.' . $type);
-        return $erMsg;
-    }
-    return null;
+    app('log')->notice($message, $context);
 }
 
-/**
- * 获取请求id
- */
-function getRequestId()
+function warning($message, array $context = array())
 {
-    static $requestId = null;
-
-    if ($requestId) {
-        return $requestId;
-    }
-
-    // 定义REQUESTID，如果请求头中存在则使用传递的值，如果请求头中不存在则创建
-    if (isset($_SERVER['HTTP_REQUESTID'])) {
-        $requestId = $_SERVER['HTTP_REQUESTID'];
-    } else {
-        $requestId = createId();
-    }
-
-    return $requestId;
+    app('log')->warning($message, $context);
 }
 
-/**
- * 生成唯一UUID
- */
-function createId(){
-    if (function_exists('com_create_guid')){
-        return com_create_guid();
-    }else{
-        mt_srand((double)microtime()*10000);
-        $charid = strtolower(md5(uniqid(rand(), true)));
-        $hyphen = chr(45);// "-"
-        $uuid = substr($charid, 0, 8).$hyphen
-            .substr($charid, 8, 4).$hyphen
-            .substr($charid,12, 4).$hyphen
-            .substr($charid,16, 4).$hyphen
-            .substr($charid,20,12);
-        return $uuid;
-    }
-}
-
-function access(array $info)
+function error($message, array $context = array())
 {
-    \Vanilla\Log\Log::access($info);
+    app('log')->error($message, $context);
 }
 
-function info($format, ...$args)
+function critical($message, array $context = array())
 {
-    \Vanilla\Log\Log::info($format, ...$args);
+    app('log')->critical($message, $context);
 }
 
-function debug($format, ...$args)
+function alert($message, array $context = array())
 {
-    \Vanilla\Log\Log::debug($format, ...$args);
+    app('log')->alert($message, $context);
 }
 
-function error($format, ...$args)
+function emergency($message, array $context = array())
 {
-    \Vanilla\Log\Log::error($format, ...$args);
+    app('log')->emergency($message, $context);
 }

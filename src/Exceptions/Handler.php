@@ -8,8 +8,9 @@
 
 namespace Vanilla\Exceptions;
 
+use GuzzleHttp\Exception\RequestException;
 use Vanilla\Log\Log;
-use Whoops\Handler\PrettyPageHandler;
+use Whoops\Handler\JsonResponseHandler;
 use Whoops\Run;
 
 class Handler
@@ -23,27 +24,53 @@ class Handler
     public function render($request, \Exception $e)
     {
         if ($e instanceof HttpException) {
-            return response($e->getMessage(), $e->getStatusCode());
+            return app('response')
+                ->withStatus($e->getStatusCode())
+                ->withBody($e->getMessage());
         }
 
         $run = new Run();
+
         if (env('APP_DEBUG', true)) {
-            $handler = new PrettyPageHandler();
-            $handler->setEditor('phpstorm');
+            $handler = new JsonResponseHandler();
             $run->pushHandler($handler);
         }
         $run->writeToOutput(false);
         $run->allowQuit(false);
 
         $run->pushHandler(function ($exception, $inspector, $run) {
-            Log::error(['desc' => $exception->getMessage() . ', FILE: ' . $exception->getFile() . '(' . $exception->getLine() . ')', 'throwable' => $exception->getTrace()]);
+            if ($exception instanceof RequestException) {
+                $request = $exception->getRequest();
+                $response = $exception->getResponse();
+                $log = [];
+                $log['method'] = $request->getMethod();
+                $log['uri'] = (string)$request->getUri();
+                $log['headers'] = $request->getHeaders();
+                $log['status'] = !empty($response) ? $response->getStatusCode() : 0;
+                $log['response'] = !empty($response) ? $response->getBody()->getContents() : '';
+                $log['message'] = $exception->getMessage();
+                $log['file'] = $exception->getFile();
+                $log['line'] = $exception->getLine();
+                if (env('APP_DEBUG', true)) {
+                    $log['throwable'] = $exception->getTrace();
+                } else {
+                    $log['throwable'] = '请开启debug模式';
+                }
+                warning(get_class($exception), $log);
+            } else {
+                $log['message'] = $exception->getMessage();
+                $log['file'] = $exception->getFile();
+                $log['line'] = $exception->getLine();
+                $log['throwable'] = $exception->getTrace();
+                error(get_class($exception), $log);
+            }
         });
 
         $response = $run->handleException($e);
-        if ($response == '') {
-            $response = 'error';
+        if(env('APP_DEBUG', true)) {
+            return json(array_merge(['code' => 99999, 'msg' => '系统异常，请稍后再试', 'warning' => '生产环境请设置 APP_DEBUG = false 来屏蔽此消息'], json_decode($response, true)), 500);
+        }else{
+            return json(['code' => 99999, 'msg' => '系统异常，请稍后再试'], 500);
         }
-
-        return response($response, 500);
     }
 }

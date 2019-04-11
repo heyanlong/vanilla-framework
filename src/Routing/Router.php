@@ -8,435 +8,60 @@
 
 namespace Vanilla\Routing;
 
+
+use FastRoute as BaseFastRoute;
+use Vanilla\Exceptions\MethodNotAllowedHttpException;
+use Vanilla\Exceptions\NotFoundHttpException;
+use Vanilla\Http\Request;
+use Vanilla\Http\Response;
+
 class Router
 {
     /**
-     * The application instance.
-     *
-     * @var \Laravel\Lumen\Application
+     * @param $input Request
+     * @return Response
      */
-    public $app;
-
-    /**
-     * The route group attribute stack.
-     *
-     * @var array
-     */
-    protected $groupStack = [];
-
-    /**
-     * All of the routes waiting to be registered.
-     *
-     * @var array
-     */
-    protected $routes = [];
-
-    /**
-     * All of the named routes and URI pairs.
-     *
-     * @var array
-     */
-    public $namedRoutes = [];
-
-    protected $currentRoute;
-
-    /**
-     * Router constructor.
-     *
-     * @param  \Laravel\Lumen\Application $app
-     */
-    public function __construct($app)
+    public function dispatch($input)
     {
-        $this->app = $app;
-    }
+        $uri = $input->getRequestUri();
+        $method = $input->getMethod();
+        $appHome = app()->getBasePath();
 
-    /**
-     * Register a set of routes with a set of shared attributes.
-     *
-     * @param  array $attributes
-     * @param  \Closure $callback
-     * @return void
-     */
-    public function group(array $attributes, \Closure $callback)
-    {
-        if (isset($attributes['middleware']) && is_string($attributes['middleware'])) {
-            $attributes['middleware'] = explode('|', $attributes['middleware']);
-        }
-
-        $this->updateGroupStack($attributes);
-
-        call_user_func($callback, $this);
-
-        array_pop($this->groupStack);
-    }
-
-    /**
-     * Update the group stack with the given attributes.
-     *
-     * @param  array $attributes
-     * @return void
-     */
-    protected function updateGroupStack(array $attributes)
-    {
-        if (!empty($this->groupStack)) {
-            $attributes = $this->mergeWithLastGroup($attributes);
-        }
-
-        $this->groupStack[] = $attributes;
-    }
-
-    /**
-     * Merge the given group attributes.
-     *
-     * @param  array $new
-     * @param  array $old
-     * @return array
-     */
-    public function mergeGroup($new, $old)
-    {
-        $new['namespace'] = static::formatUsesPrefix($new, $old);
-
-        $new['prefix'] = static::formatGroupPrefix($new, $old);
-
-        if (isset($new['domain'])) {
-            unset($old['domain']);
-        }
-
-        if (isset($old['as'])) {
-            $new['as'] = $old['as'] . (isset($new['as']) ? '.' . $new['as'] : '');
-        }
-
-        if (isset($old['suffix']) && !isset($new['suffix'])) {
-            $new['suffix'] = $old['suffix'];
-        }
-
-        foreach (['namespace', 'prefix', 'as', 'suffix'] as $item) {
-            if (isset($old[$item])) {
-                unset($old[$item]);
-            }
-        }
-
-        return array_merge_recursive($old, $new);
-    }
-
-    /**
-     * Merge the given group attributes with the last added group.
-     *
-     * @param  array $new
-     * @return array
-     */
-    protected function mergeWithLastGroup($new)
-    {
-        return $this->mergeGroup($new, end($this->groupStack));
-    }
-
-    /**
-     * Format the uses prefix for the new group attributes.
-     *
-     * @param  array $new
-     * @param  array $old
-     * @return string|null
-     */
-    protected static function formatUsesPrefix($new, $old)
-    {
-        if (isset($new['namespace'])) {
-            return isset($old['namespace']) && strpos($new['namespace'], '\\') !== 0
-                ? trim($old['namespace'], '\\') . '\\' . trim($new['namespace'], '\\')
-                : trim($new['namespace'], '\\');
-        }
-
-        return isset($old['namespace']) ? $old['namespace'] : null;
-    }
-
-    /**
-     * Format the prefix for the new group attributes.
-     *
-     * @param  array $new
-     * @param  array $old
-     * @return string|null
-     */
-    protected static function formatGroupPrefix($new, $old)
-    {
-        $oldPrefix = isset($old['prefix']) ? $old['prefix'] : null;
-
-        if (isset($new['prefix'])) {
-            return trim($oldPrefix, '/') . '/' . trim($new['prefix'], '/');
-        }
-
-        return $oldPrefix;
-    }
-
-    /**
-     * Add a route to the collection.
-     *
-     * @param  array|string $method
-     * @param  string $uri
-     * @param  mixed $action
-     * @return void
-     */
-    public function addRoute($method, $uri, $action)
-    {
-        $action = $this->parseAction($action);
-
-        $attributes = null;
-
-        if ($this->hasGroupStack()) {
-            $attributes = $this->mergeWithLastGroup([]);
-        }
-
-        if (isset($attributes) && is_array($attributes)) {
-            if (isset($attributes['prefix'])) {
-                $uri = trim($attributes['prefix'], '/') . '/' . trim($uri, '/');
-            }
-
-            if (isset($attributes['suffix'])) {
-                $uri = trim($uri, '/') . rtrim($attributes['suffix'], '/');
-            }
-
-            $action = $this->mergeGroupAttributes($action, $attributes);
-        }
-
-        $uri = '/' . trim($uri, '/');
-
-        if (isset($action['as'])) {
-            $this->namedRoutes[$action['as']] = $uri;
-        }
-
-        if (is_array($method)) {
-            foreach ($method as $verb) {
-                $this->routes[$verb . $uri] = ['method' => $verb, 'uri' => $uri, 'action' => $action];
-            }
+        if (env('APP_ENV') != 'prod') {
+            $config = BaseFastRoute\simpleDispatcher(function (BaseFastRoute\RouteCollector $r) use ($appHome) {
+                if (env('PHPUNIT_MODE', false) == false && php_sapi_name() == 'cli') {
+                    require $appHome . '/routes/command.php';
+                } else {
+                    require $appHome . '/routes/web.php';
+                }
+            })->dispatch($input->getMethod(), $uri);
         } else {
-            $this->routes[$method . $uri] = ['method' => $method, 'uri' => $uri, 'action' => $action];
-        }
-    }
-
-    /**
-     * Parse the action into an array format.
-     *
-     * @param  mixed $action
-     * @return array
-     */
-    protected function parseAction($action)
-    {
-        if (is_string($action)) {
-            return ['uses' => $action];
-        } elseif (!is_array($action)) {
-            return [$action];
+            $config = BaseFastRoute\cachedDispatcher(function (BaseFastRoute\RouteCollector $r) use ($appHome) {
+                if (env('PHPUNIT_MODE', false) == false && php_sapi_name() == 'cli') {
+                    require $appHome . '/routes/command.php';
+                } else {
+                    require $appHome . '/routes/web.php';
+                }
+            }, [
+                'cacheFile' => $appHome . '/routes/cache-' . php_sapi_name() . '.php'
+            ])->dispatch($method, $uri);
         }
 
-        if (isset($action['middleware']) && is_string($action['middleware'])) {
-            $action['middleware'] = explode('|', $action['middleware']);
+        switch ($config[0]) {
+            case BaseFastRoute\Dispatcher::NOT_FOUND:
+                throw new NotFoundHttpException();
+            case BaseFastRoute\Dispatcher::METHOD_NOT_ALLOWED:
+                throw new MethodNotAllowedHttpException('MethodNotAllowed');
+            case BaseFastRoute\Dispatcher::FOUND:
+                if (env('PHPUNIT_MODE', false) == false && php_sapi_name() == 'cli') {
+                    $controller = $config[1];
+                    return (new $controller)->handle(app('request'));
+                } else {
+                    [$controller, $action] = $config[1];
+                    return (new $controller)->$action(app('request'));
+                }
+
         }
-
-        return $action;
-    }
-
-    /**
-     * Determine if the router currently has a group stack.
-     *
-     * @return bool
-     */
-    public function hasGroupStack()
-    {
-        return !empty($this->groupStack);
-    }
-
-    /**
-     * Merge the group attributes into the action.
-     *
-     * @param  array $action
-     * @param  array $attributes The group attributes
-     * @return array
-     */
-    protected function mergeGroupAttributes(array $action, array $attributes)
-    {
-        $namespace = isset($attributes['namespace']) ? $attributes['namespace'] : null;
-        $middleware = isset($attributes['middleware']) ? $attributes['middleware'] : null;
-        $as = isset($attributes['as']) ? $attributes['as'] : null;
-
-        return $this->mergeNamespaceGroup(
-            $this->mergeMiddlewareGroup(
-                $this->mergeAsGroup($action, $as),
-                $middleware),
-            $namespace
-        );
-    }
-
-    /**
-     * Merge the namespace group into the action.
-     *
-     * @param  array $action
-     * @param  string $namespace
-     * @return array
-     */
-    protected function mergeNamespaceGroup(array $action, $namespace = null)
-    {
-        if (isset($namespace) && isset($action['uses'])) {
-            $action['uses'] = $namespace . '\\' . $action['uses'];
-        }
-
-        return $action;
-    }
-
-    /**
-     * Merge the middleware group into the action.
-     *
-     * @param  array $action
-     * @param  array $middleware
-     * @return array
-     */
-    protected function mergeMiddlewareGroup(array $action, $middleware = null)
-    {
-        if (isset($middleware)) {
-            if (isset($action['middleware'])) {
-                $action['middleware'] = array_merge($middleware, $action['middleware']);
-            } else {
-                $action['middleware'] = $middleware;
-            }
-        }
-
-        return $action;
-    }
-
-    /**
-     * Merge the as group into the action.
-     *
-     * @param  array $action
-     * @param  string $as
-     * @return array
-     */
-    protected function mergeAsGroup(array $action, $as = null)
-    {
-        if (isset($as) && !empty($as)) {
-            if (isset($action['as'])) {
-                $action['as'] = $as . '.' . $action['as'];
-            } else {
-                $action['as'] = $as;
-            }
-        }
-
-        return $action;
-    }
-
-    /**
-     * Register a route with the application.
-     *
-     * @param  string $uri
-     * @param  mixed $action
-     * @return $this
-     */
-    public function get($uri, $action)
-    {
-        $this->addRoute('GET', $uri, $action);
-
-        return $this;
-    }
-
-    /**
-     * Register a route with the application.
-     *
-     * @param  string $uri
-     * @param  mixed $action
-     * @return $this
-     */
-    public function post($uri, $action)
-    {
-        $this->addRoute('POST', $uri, $action);
-
-        return $this;
-    }
-
-    /**
-     * Register a route with the application.
-     *
-     * @param  string $uri
-     * @param  mixed $action
-     * @return $this
-     */
-    public function put($uri, $action)
-    {
-        $this->addRoute('PUT', $uri, $action);
-
-        return $this;
-    }
-
-    /**
-     * Register a route with the application.
-     *
-     * @param  string $uri
-     * @param  mixed $action
-     * @return $this
-     */
-    public function patch($uri, $action)
-    {
-        $this->addRoute('PATCH', $uri, $action);
-
-        return $this;
-    }
-
-    /**
-     * Register a route with the application.
-     *
-     * @param  string $uri
-     * @param  mixed $action
-     * @return $this
-     */
-    public function delete($uri, $action)
-    {
-        $this->addRoute('DELETE', $uri, $action);
-
-        return $this;
-    }
-
-    /**
-     * Register a route with the application.
-     *
-     * @param  string $uri
-     * @param  mixed $action
-     * @return $this
-     */
-    public function options($uri, $action)
-    {
-        $this->addRoute('OPTIONS', $uri, $action);
-
-        return $this;
-    }
-
-    /**
-     * Register a route of the first route matching with the application.
-     *
-     * @param  string $uri
-     * @param  mixed $action
-     * @return $this
-     */
-    public function match($method, $uri, $action)
-    {
-        foreach ($method as &$value) {
-            $value = strtoupper($value);
-        }
-        $this->addRoute($method, $uri, $action);
-
-        return $this;
-    }
-
-    /**
-     * Get the raw routes for the application.
-     *
-     * @return array
-     */
-    public function getRoutes()
-    {
-        return $this->routes;
-    }
-
-    public function getCurrentRoute()
-    {
-        return $this->currentRoute;
-    }
-
-    public function setCurrentRoute($route)
-    {
-        $this->currentRoute = $route;
+        return new Response();
     }
 }
