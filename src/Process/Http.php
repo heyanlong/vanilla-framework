@@ -19,9 +19,15 @@ class Http implements Process
 
     public function run()
     {
-        $this->app['request'] = Request::capture();
+        if (!env('PHPUNIT_MODE', false)) {
+            $this->app['request'] = Request::capture();
+        }
+
         $this->app['router'] = new Router($this->app);
         $response = $this->app['router']->dispatch();
+        if (env('PHPUNIT_MODE')) {
+            return $response;
+        }
         $response->send();
     }
 }
