@@ -132,7 +132,11 @@ class TestCase extends \PHPUnit\Framework\TestCase
 
     public static function setUpBeforeClass()
     {
-        Environment::load(__DIR__ . '/../../../../../' . '.redis');
+        try {
+            Environment::load(__DIR__ . '/../../../../../' . '.redis');
+        } catch (\Exception $e) {
+
+        }
         if (self::$app == null) {
             self::$app = new Application(__DIR__ . '/../../../../../');
             self::$app->process(new Http(self::$app));
