@@ -9,10 +9,12 @@ use FastRoute\Dispatcher;
 use FastRoute\RouteCollector;
 use function FastRoute\simpleDispatcher;
 use Vanilla\Application;
+use Vanilla\Config\Environment;
 use Vanilla\Exceptions\MethodNotAllowedHttpException;
 use Vanilla\Exceptions\NotFoundHttpException;
 use Vanilla\Http\Request;
 use Vanilla\Http\Response;
+use Vanilla\Process\Http;
 
 /**
  * @method void assertArrayHasKey($key, $array, string $message = '')
@@ -130,9 +132,10 @@ class TestCase extends \PHPUnit\Framework\TestCase
 
     public static function setUpBeforeClass()
     {
-        \Vanilla\Config\Environment::load("/php/qyd/haima");
+        Environment::load(__DIR__ . '/../../../../../' . '.redis');
         if (self::$app == null) {
             self::$app = new Application(__DIR__ . '/../../../../../');
+            self::$app->process(new Http(self::$app));
         }
     }
 
@@ -180,7 +183,7 @@ class TestCase extends \PHPUnit\Framework\TestCase
             $server['CONTENT_TYPE'] = 'application/json';
         }
 
-        if(in_array(strtoupper($method),['GET','POST','PUT','DELETE','HEAD','PATCH'])){
+        if (in_array(strtoupper($method), ['GET', 'POST', 'PUT', 'DELETE', 'HEAD', 'PATCH'])) {
             $server['REQUEST_METHOD'] = strtoupper($method);
         }
 
