@@ -15,6 +15,7 @@ use Monolog\Processor\WebProcessor;
 use Predis\Client;
 use Vanilla\Cache\Redis;
 use Vanilla\Config\ArrayConfig;
+use Vanilla\Contracts\Process;
 use Vanilla\Contracts\Stream\Input;
 use Vanilla\Exceptions\FatalThrowableError;
 use Vanilla\Exceptions\MethodNotAllowedHttpException;
@@ -30,6 +31,8 @@ use Monolog\Handler\StreamHandler;
 class Application implements \ArrayAccess
 {
     private static $instance;
+
+    private $process;
 
     /**
      * @var Logger
@@ -51,11 +54,10 @@ class Application implements \ArrayAccess
 
     protected $input;
 
-    public function __construct($basePath = null, $command = 'help')
+    public function __construct($basePath = null)
     {
         define('BEGIN_TIME', microtime(TRUE));
         $this->basePath = $basePath;
-        $this['command'] = $command;
 
         date_default_timezone_set('Asia/Shanghai');
 
@@ -87,18 +89,14 @@ class Application implements \ArrayAccess
         static::$instance = $this;
     }
 
+    public function process(Process $process)
+    {
+        $this->process = $process;
+    }
+
     public function run()
     {
-        if ($this['request'] instanceof Request) {
-            $input = $this['request'];
-        } else {
-            $input = Request::capture();
-            $this['request'] = $input;
-        }
-        if ($input instanceof Input) {
-            $response = $this['router']->dispatch($input);
-            return $response;
-        }
+        return $this->process->run();
     }
 
     public function getBasePath()
@@ -123,7 +121,6 @@ class Application implements \ArrayAccess
         $this['response'] = new Response();
         $this['config'] = new ArrayConfig($this);
         $this['cache'] = $this->cache();
-        $this['router'] = new Router();
     }
 
     protected function cache()

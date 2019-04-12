@@ -1,31 +1,29 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: heyanlong
- * Date: 2018/9/11
- * Time: 下午1:57
- */
+declare(strict_types=1);
 
 namespace Vanilla\Config;
-
 
 use Predis\Client;
 
 class Environment
 {
-    public static function load($path, $merge = [])
+    public static function load(string $config)
     {
-        $file = dirname(__DIR__) . '/../../../../.redis';
-        if (file_exists($file)) {
-            $uri = trim(file_get_contents($file));
+        if (file_exists($config)) {
+            $uri = trim(file_get_contents($config));
             $masterName = 'mymaster';
             $password = '';
+            $path = '';
             if (strpos($uri, '|') !== false) {
                 [$masterName, $uri] = explode('|', $uri);
                 if (strpos($masterName, '@') !== false) {
                     $password = substr($masterName, strpos($masterName, '@') + 1, strlen($masterName));
                     $masterName = substr($masterName, 0, strpos($masterName, '@'));
                 }
+            }
+
+            if (strpos($uri, '#') !== false) {
+                [$uri, $path] = explode('#', $uri);
             }
 
             $uri = explode(',', $uri);
@@ -51,20 +49,16 @@ class Environment
                 ++$count;
             } while ($retry && $count < $retryMax);
             if ($retry) {
-                header("Content-type: application/json; charset=utf-8");
-                echo json_encode(['msg' => '网络异常，请稍后再试！', 'code' => 99999]);
-                mail("heyanlong@kaiyuan.net", "haima redis failed.", '!!!');
-                exit;
-//                throw new \Exception("failed to connect redis!");
+                throw new \Exception("failed to connect redis!");
             }
 
             $env = $redisServer->hgetall(trim($path));
 
-            $env = array_merge($merge, $env);
-
             foreach ($env as $name => $value) {
                 self::setEnvironmentVariable($name, $value);
             }
+        } else {
+            throw new \Exception(".redis not found");
         }
     }
 
