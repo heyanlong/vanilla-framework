@@ -1,26 +1,92 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: heyanlong
- * Date: 2018/9/17
- * Time: 下午7:30
- */
 
 namespace Vanilla\Database;
 
 
+/**
+ * @method static Builder where($query, ...$values)
+ * @method static Builder update(...$attrs)
+ * @method static Builder updates($values)
+ * @method static Builder begin()
+ * @method static bool commit()
+ * @method static bool rollBack()
+ * @method static Builder limit($limit)
+ * @method static Builder offset($offset)
+ * @method static first(...$where)
+ * Class Model
+ * @package Vanilla\Database
+ */
 class Model
 {
-    protected $query;
-    protected $connect = 'default';
+    private $query;
+    protected $connection = 'default';
     protected $tableName = '';
+    protected $primaryKey = 'id';
+    public $exists = false;
+    protected $attributes;
+    protected $original;
 
     protected function newQuery()
     {
         $this->query = new Builder();
-        $this->query->connect($this->connect);
-        $this->query->table($this->tableName);
+        $this->query->setModel($this);
         return $this->query;
+    }
+
+    /**
+     * @return string
+     */
+    public function getConnection(): string
+    {
+        return $this->connection;
+    }
+
+    /**
+     * @param string $connection
+     */
+    public function setConnection(string $connection): void
+    {
+        $this->connection = $connection;
+    }
+
+    /**
+     * @return string
+     */
+    public function getTableName(): string
+    {
+        return $this->tableName;
+    }
+
+    /**
+     * @param string $tableName
+     */
+    public function setTableName(string $tableName): void
+    {
+        $this->tableName = $tableName;
+    }
+
+    public function getPrimaryKey(): string
+    {
+        return $this->primaryKey;
+    }
+
+    public function setAttributes(array $attr)
+    {
+        $this->attributes = $attr;
+        $this->original = $attr;
+    }
+
+    public function getAttributes()
+    {
+        return $this->attributes;
+    }
+
+    public function getAttribute($key)
+    {
+        if (array_key_exists($key, $this->attributes)) {
+            return $this->attributes[$key];
+        }
+        return;
     }
 
     public function __call($method, $parameters)
@@ -38,5 +104,15 @@ class Model
     {
         $instance = new static;
         return call_user_func_array([$instance, $method], $parameters);
+    }
+
+    public function __set($name, $value)
+    {
+        $this->attributes[$name] = $value;
+    }
+
+    public function __get($key)
+    {
+        return $this->getAttribute($key);
     }
 }
