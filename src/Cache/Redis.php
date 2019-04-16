@@ -82,4 +82,10 @@ class Redis implements Cache
     {
         return $this->redis;
     }
+
+    public function __call($name, $arguments)
+    {
+        $cache = $this->redis;
+        return call_user_func_array([$cache, $name], $arguments);
+    }
 }

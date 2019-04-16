@@ -1,229 +1,347 @@
 <?php
-/**
- * Created by PhpStorm.
- * User: heyanlong
- * Date: 2018/9/18
- * Time: 上午9:40
- */
 
 namespace Vanilla\Database;
 
 
+use Vanilla\Exceptions\DBException;
+
 class Builder
 {
-    protected $connect;
-    protected $table;
-    protected $wheres = [];
-    protected $columns = '*';
-    protected $join;
-    protected $query;
+    private $model;
 
-    public function join($table, $on, $type = 'left')
+    protected $whereConditions = [];
+    protected $orConditions;
+    protected $notConditions;
+    protected $havingConditions;
+    protected $joinConditions;
+    protected $initAttrs;
+    protected $assignAttrs;
+    protected $selects;
+    protected $omits;
+    protected $orders;
+    protected $preload;
+    protected $offset;
+    protected $limit;
+    protected $group;
+    protected $tableName;
+    protected $raw;
+    protected $unscoped;
+    protected $ignoreOrderQuery;
+
+    /**
+     * @var \PDO
+     */
+    private $transaction;
+
+    private $vars = [];
+
+    /**
+     * @return void
+     */
+    public function setModel(Model $model): void
     {
-        $map = [
-            'left' => '[>]',
-            'right' => '[<]',
-            'full' => '[<>]',
-            'inner' => '[><]',
+        $this->model = $model;
+    }
+
+    /**
+     * @return object
+     */
+    public function getModel(): object
+    {
+        return $this->model;
+    }
+
+    public function where($query, ...$values): Builder
+    {
+        $this->whereConditions[] = [
+            'query' => $query,
+            'args' => $values
         ];
-        $this->join[$map[$type] . $table] = $on;
         return $this;
     }
 
-    public function query($query)
+    public function limit($limit): Builder
     {
-        $this->query = $query;
+        $this->limit = $limit;
         return $this;
     }
 
-    public function table($name)
+    public function offset($offset): Builder
     {
-        $this->table = $name;
+        $this->offset = $offset;
         return $this;
     }
 
-    public function connect($connect)
+    public function first(...$where)
     {
-        $this->connect = $connect;
-        return $this;
-    }
+        try {
+            $this->limit(1);
+            $pdo = Connector::getInstance($this->getModel()->getConnection());
+            $statement = $this->prepareQuerySQL();
+            $parameters = $this->vars;
+            $stmt = $pdo->prepare($statement);
+            $start = microtime(true);
+            $stmt->execute($parameters);
+            $end = microtime(true);
+            $res = $stmt->fetch();
 
-    public function select($columns)
-    {
-        $this->columns = $columns;
-        return $this;
-    }
-
-    public function where($where)
-    {
-        $this->wheres = $where;
-        return $this;
-    }
-
-    public function order($order)
-    {
-        $this->wheres['ORDER'] = $order;
-        return $this;
-    }
-
-    public function limit($limit)
-    {
-        $this->wheres['LIMIT'] = $limit;
-        return $this;
-    }
-
-    public function group($group)
-    {
-        $this->wheres['GROUP'] = $group;
-        return $this;
-    }
-
-    public function having($having)
-    {
-        $this->wheres['HAVING'] = $having;
-        return $this;
-    }
-
-    public function insert($data)
-    {
-        $this->DB()->insert($this->table, $data);
-        return $this->DB()->id();
-    }
-
-    public function delete()
-    {
-        $data = $this->DB()->delete($this->table, $this->wheres);
-        return $data->rowCount();
-    }
-
-    public function update($data)
-    {
-        $data = $this->DB()->update($this->table, $data, $this->wheres);
-        return $data->rowCount();
-    }
-
-    public function count()
-    {
-        $db = $this->DB();
-        if ($this->columns === '*') {
-            return $db->count($this->table, $this->wheres);
-        } elseif ($this->columns !== '*' && $this->join !== null) {
-            return $db->count($this->table, $this->join, $this->columns, $this->wheres);
-        }
-    }
-
-    public function max()
-    {
-        $db = $this->DB();
-        if ($this->join === null) {
-            return $db->max($this->table, $this->columns, $this->wheres);
-        } else {
-            return $db->max($this->table, $this->join, $this->columns, $this->wheres);
-        }
-    }
-
-    public function min()
-    {
-        $db = $this->DB();
-        if ($this->join === null) {
-            return $db->min($this->table, $this->columns, $this->wheres);
-        } else {
-            return $db->min($this->table, $this->join, $this->columns, $this->wheres);
-        }
-    }
-
-    public function avg()
-    {
-        $db = $this->DB();
-        if ($this->join === null) {
-            return $db->avg($this->table, $this->columns, $this->wheres);
-        } else {
-            return $db->avg($this->table, $this->join, $this->columns, $this->wheres);
-        }
-    }
-
-    public function sum()
-    {
-        $db = $this->DB();
-        if ($this->join === null) {
-            return $db->sum($this->table, $this->columns, $this->wheres);
-        } else {
-            return $db->sum($this->table, $this->join, $this->columns, $this->wheres);
-        }
-    }
-
-    public function first()
-    {
-        if ($this->query === null) {
-            // 查询
-            $this->wheres['LIMIT'] = 1;
-
-            if ($this->join === null) {
-                $res = $this->DB()->select($this->table, $this->columns, $this->wheres);
-            } else {
-                $res = $this->DB()->select($this->table, $this->join, $this->columns, $this->wheres);
+            $newModel = null;
+            if (!empty($res)) {
+                $className = get_class($this->getModel());
+                $newModel = new $className();
+                $newModel->exists = true;
+                $newModel->setAttributes($res);
             }
-        } else {
-            try {
-                if (substr(trim(strtoupper($this->query)), 0, 6) === 'SELECT') {
-                    $res = $this->DB()->query($this->query)->fetchAll();
+
+            info(sprintf($this->getLogFormat(), ($end - $start) * 1000, $res ? 1 : 0, $this->toSql($statement, $parameters)));
+            return $newModel;
+        } catch (\PDOException $e) {
+            throw new DBException($e->getMessage(), $e->getCode());
+        }
+    }
+
+    public function update(...$attrs)
+    {
+        $toSearchableMap;
+        if (count($attrs) > 1) {
+            if (is_string($attrs[0])) {
+                $toSearchableMap[$attrs[0]] = $attrs[1];
+            }
+        }
+        return $this->updates($toSearchableMap);
+    }
+
+    public function updates($values)
+    {
+        if (property_exists($this->getModel(), $this->getModel()->getPrimaryKey())) {
+            $this->where(sprintf("%s = ?", $this->getModel()->getPrimaryKey()), $this->getModel()->{$this->getModel()->getPrimaryKey()});
+        }
+
+        $sqls = [];
+        $vars = [];
+        if (is_array($values)) {
+            foreach ($values as $key => $value) {
+                $sqls[] = sprintf("%s = ?", $key);
+                $vars[] = $value;
+            }
+        }
+        $sql = implode(", ", $sqls);
+        $sql = $this->addVars($sql, $vars);
+
+        try {
+            $pdo = Connector::getInstance($this->getModel()->getConnection());
+            $statement = $this->prepareUpdateSQL($sql);
+            $parameters = $this->vars;
+            $stmt = $pdo->prepare($statement);
+            $start = microtime(true);
+            $stmt->execute($parameters);
+            $end = microtime(true);
+            $rowCount = $stmt->rowCount();
+
+            info(sprintf($this->getLogFormat(), ($end - $start) * 1000, $rowCount, $this->toSql($statement, $parameters)));
+            return $rowCount;
+        } catch (\PDOException $e) {
+            throw new DBException($e->getMessage(), $e->getCode());
+        }
+    }
+
+    public function save()
+    {
+        $model = $this->getModel();
+
+        // update
+        if ($model->exists) {
+            // TODO
+        } else { // insert
+            $attrs = $model->getAttributes();
+            $sql = $this->prepareInsertSQL($attrs);
+            $statement = $this->addVars($sql, [array_values($attrs)]);
+        }
+        $parameters = $this->vars;
+        try {
+            $pdo = Connector::getInstance($this->getModel()->getConnection());
+            $stmt = $pdo->prepare($statement);
+            $start = microtime(true);
+            $stmt->execute($parameters);
+            $end = microtime(true);
+            $rowCount = $stmt->rowCount();
+
+            info(sprintf($this->getLogFormat(), ($end - $start) * 1000, $rowCount, $this->toSql($statement, $parameters)));
+            return $rowCount;
+        } catch (\PDOException $e) {
+            error(sprintf($this->getLogFormat(), 0, 0, $this->toSql($statement, $parameters)));
+            throw new DBException($e->getMessage(), $e->getCode());
+        }
+    }
+
+    private function prepareInsertSQL($attributes)
+    {
+        $sql = '`' . implode('`,`', array_keys($attributes)) . '`';
+        return sprintf("INSERT INTO %s (%s) VALUES(?)", $this->getModel()->getTableName(), $sql);
+    }
+
+    private function prepareUpdateSQL($sql)
+    {
+        return sprintf("UPDATE %s SET %s%s", $this->getModel()->getTableName(), $sql, $this->addExtraSpaceIfExist($this->combinedConditionSql()));
+    }
+
+    private function prepareQuerySQL()
+    {
+        return sprintf("SELECT %s FROM %s %s", $this->selectSQL(), $this->getModel()->getTableName(), $this->combinedConditionSql());
+    }
+
+    private function selectSQL()
+    {
+        return '*';
+    }
+
+    private function whereSQL(): string
+    {
+        $sql = '';
+        $andConditions = [];
+
+        foreach ($this->whereConditions as $key => $value) {
+            $andConditions[] = $this->buildCondition($value, true);
+        }
+
+        $combinedSQL = implode(" AND ", $andConditions);
+
+        if (strlen($combinedSQL) > 0) {
+            $sql = "WHERE " . $combinedSQL;
+        }
+        return $sql;
+    }
+
+    private function buildCondition(array $clause, bool $include): string
+    {
+        $equalSQL = '=';
+        $inSQL = 'IN';
+
+        if (!$include) {
+            $equalSQL = '<>';
+            $inSQL = 'NOT IN';
+        }
+
+        switch (gettype($value = $clause['query'])) {
+            case 'string':
+                if ($value != '') {
+                    if (!$include) {
+
+                    } else {
+                        $str = sprintf("(%s)", $value);
+                    }
                 }
-            } catch (\Exception $e) {
-
-            }
+                break;
         }
 
-        if (!empty($res)) {
-            return $res[0];
-        }
+        $str = $this->addVars($str, $clause['args']);
 
+        return $str;
     }
 
-    public function get()
+    private function addVars($str, $values)
     {
-        if ($this->query === null) {
-            if ($this->join === null) {
-                $res = $this->DB()->select($this->table, $this->columns, $this->wheres);
-            } else {
-                $res = $this->DB()->select($this->table, $this->join, $this->columns, $this->wheres);
-            }
-        } else {
-            try {
-                if (substr(trim(strtoupper($this->query)), 0, 6) === 'SELECT') {
-                    $res = $this->DB()->query($this->query)->fetchAll();
+        $sql = '';
+        $index = 0;
+        for ($i = 0; $i < strlen($str); $i++) {
+            if ($str{$i} == '?') {
+                if (isset($values[$index])) {
+                    if (gettype($values[$index]) == 'array') {
+                        foreach ($values[$index] as $value) {
+                            $sql .= '?,';
+                            $this->vars[] = $value;
+                        }
+                        $sql = rtrim($sql, ',');
+                    } else {
+                        $sql .= $str{$i};
+                        $this->vars[] = $values[$index];
+                    }
+                    $index++;
                 }
-            } catch (\Exception $e) {
-
+            } else {
+                $sql .= $str{$i};
             }
         }
-        if (!empty($res)) {
-            return $res;
+        return $sql;
+    }
+
+    private function combinedConditionSql(): string
+    {
+        $joinSQL = '';
+        $whereSQL = $this->whereSQL();
+
+        return $joinSQL . $whereSQL . $this->limitAndOffsetSQL();
+    }
+
+    private function limitAndOffsetSQL(): string
+    {
+        $sql = '';
+        if ($this->limit != null) {
+            $parsedLimit = intval($this->limit);
+            if ($parsedLimit != null && $parsedLimit >= 0) {
+                $sql .= sprintf(" LIMIT %d", $parsedLimit);
+
+                if ($this->offset != null) {
+                    $parsedOffset = intval($this->offset);
+                    if ($parsedOffset != null && $parsedLimit >= 0) {
+                        $sql .= sprintf(" OFFSET %d", $parsedOffset);
+                    }
+                }
+            }
+        }
+        return $sql;
+    }
+
+    private function addExtraSpaceIfExist(string $sql): string
+    {
+        if ($sql != "") {
+            return " " . $sql;
+        }
+        return "";
+    }
+
+    private function toSql($statement, $parameters)
+    {
+        $index = 0;
+        $sql = '';
+        for ($i = 0; $i < strlen($statement); $i++) {
+            if ($statement{$i} == '?') {
+                if (isset($parameters[$index])) {
+                    $sql .= $parameters[$index];
+                    $index++;
+                }
+            } else {
+                $sql .= $statement{$i};
+            }
+        }
+        return $sql;
+    }
+
+    private function getLogFormat()
+    {
+        if (env('APP_ENV') == 'prod') {
+            return "[%fms, %d rows affected or returned] %s";
+        } else {
+            return "[\e[32m%fms\e[0m, %d rows affected or returned] \e[32m %s \e[0m";
         }
     }
 
-    /**
-     * 获取表名
-     *
-     * @return mixed
-     */
-    public function getTable()
+    public function begin()
     {
-        return $this->table;
+        $this->transaction = Connector::getInstance($this->getModel()->getConnection());
+        if (!$this->transaction->beginTransaction()) {
+            throw new DBException("begin transaction error");
+        }
+        return $this;
     }
 
-    public function getLastSql()
+    public function commit()
     {
-        return $this->DB()->last();
+        return $this->transaction->commit();
     }
 
-    /**
-     * 返回medoo连接实例
-     *
-     * @return array
-     */
-    private function DB()
+    public function rollBack()
     {
-        return DB::getInstance($this->connect);
+        return $this->transaction->rollBack();
     }
-
 }

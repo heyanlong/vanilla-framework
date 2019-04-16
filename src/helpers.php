@@ -23,7 +23,7 @@ function json(array $data, $status = 200)
     return app('response')
         ->withStatus($status)
         ->withHeader('Content-Type', 'application/json')
-        ->withBody(json_encode($data));
+        ->withBody(json_encode($data, JSON_UNESCAPED_UNICODE));
 }
 
 if (!function_exists('env')) {
