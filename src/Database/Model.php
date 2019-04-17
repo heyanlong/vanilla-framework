@@ -5,6 +5,7 @@ namespace Vanilla\Database;
 
 /**
  * @method static Builder where($query, ...$values)
+ * @method static Builder order($value)
  * @method static Builder update(...$attrs)
  * @method static Builder updates($values)
  * @method static Builder begin()
@@ -79,6 +80,11 @@ class Model
     public function getAttributes()
     {
         return $this->attributes;
+    }
+
+    public function getOriginal()
+    {
+        return $this->original;
     }
 
     public function getAttribute($key)
