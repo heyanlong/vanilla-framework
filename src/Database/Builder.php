@@ -60,6 +60,12 @@ class Builder
         return $this;
     }
 
+    public function order($value)
+    {
+        $this->orders[] = $value;
+        return $this;
+    }
+
     public function limit($limit): Builder
     {
         $this->limit = $limit;
@@ -100,6 +106,37 @@ class Builder
         }
     }
 
+    public function find(...$where)
+    {
+        try {
+            $pdo = Connector::getInstance($this->getModel()->getConnection());
+            $statement = $this->prepareQuerySQL();
+            $parameters = $this->vars;
+            $stmt = $pdo->prepare($statement);
+            $start = microtime(true);
+            $stmt->execute($parameters);
+            $end = microtime(true);
+            $res = $stmt->fetchAll();
+
+            $models = [];
+            if (!empty($res)) {
+                foreach ($res as $item) {
+                    $className = get_class($this->getModel());
+                    $newModel = null;
+                    $newModel = new $className();
+                    $newModel->exists = true;
+                    $newModel->setAttributes($item);
+                    $models[] = $newModel;
+                }
+            }
+
+            info(sprintf($this->getLogFormat(), ($end - $start) * 1000, $res ? count($res) : 0, $this->toSql($statement, $parameters)));
+            return $models;
+        } catch (\PDOException $e) {
+            throw new DBException($e->getMessage(), $e->getCode());
+        }
+    }
+
     public function update(...$attrs)
     {
         $toSearchableMap;
@@ -113,10 +150,6 @@ class Builder
 
     public function updates($values)
     {
-        if (property_exists($this->getModel(), $this->getModel()->getPrimaryKey())) {
-            $this->where(sprintf("%s = ?", $this->getModel()->getPrimaryKey()), $this->getModel()->{$this->getModel()->getPrimaryKey()});
-        }
-
         $sqls = [];
         $vars = [];
         if (is_array($values)) {
@@ -151,7 +184,26 @@ class Builder
 
         // update
         if ($model->exists) {
-            // TODO
+            $diff = [];
+            $attrs = $model->getAttributes();
+            $original = $model->getOriginal();
+
+            foreach ($attrs as $key => $attr) {
+                if (isset($original[$key]) && $attr != $original[$key]) {
+                    $diff[$key] = $attr;
+                }
+            }
+
+            if (!empty($diff)) {
+                $updateModel = clone $model;
+                if (isset($original[$model->getPrimaryKey()])) {
+                    $updateModel = $updateModel->where(sprintf("%s = ?", $model->getPrimaryKey()), $original[$model->getPrimaryKey()]);
+                } else {
+                    throw new DBException("not found primary key.");
+                }
+                return $updateModel->updates($diff);
+            }
+            return 0;
         } else { // insert
             $attrs = $model->getAttributes();
             $sql = $this->prepareInsertSQL($attrs);
@@ -270,7 +322,19 @@ class Builder
         $joinSQL = '';
         $whereSQL = $this->whereSQL();
 
-        return $joinSQL . $whereSQL . $this->limitAndOffsetSQL();
+        return $joinSQL . $whereSQL . $this->orderSQL() . $this->limitAndOffsetSQL();
+    }
+
+    private function orderSQL(): string
+    {
+        if (!empty($this->orders)) {
+            $orders = [];
+            foreach ($this->orders as $order) {
+                $orders[] = $order;
+            }
+            return " ORDER BY " . implode(',', $orders);
+        }
+        return '';
     }
 
     private function limitAndOffsetSQL(): string
