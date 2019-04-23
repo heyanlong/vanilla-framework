@@ -10,6 +10,7 @@ namespace Vanilla;
 
 
 use App\Exceptions\Handler;
+use Monolog\Formatter\JsonFormatter;
 use Monolog\Formatter\LineFormatter;
 use Monolog\Processor\WebProcessor;
 use Predis\Client;
@@ -69,15 +70,21 @@ class Application implements \ArrayAccess
             'notice' => Logger::NOTICE,
             'warning' => Logger::WARNING
         ];
-        $logger->pushHandler(new StreamHandler($basePath . '/logs/' . date('Y-m-d') . '/run.log', $loggerLevelMap[$loggerLevel]));
-        $logger->pushHandler(new StreamHandler($basePath . '/logs/' . date('Y-m-d') . '/error.log', Logger::ERROR, false));
+        $run = new StreamHandler($basePath . '/logs/' . date('Y-m-d') . '/run.log', $loggerLevelMap[$loggerLevel]);
+        $run->setFormatter(new JsonFormatter());
+        $error = new StreamHandler($basePath . '/logs/' . date('Y-m-d') . '/error.log', Logger::ERROR, false);
+        $error->setFormatter(new JsonFormatter());
+        $logger->pushHandler($run);
+        $logger->pushHandler($error);
         $logger->pushProcessor(new TraceIdProcessor());
         $logger->pushProcessor(new WebProcessor());
         $this['log'] = $logger;
 
         if (static::$accessLog == null) {
             static::$accessLog = new Logger('vanilla');
-            static::$accessLog->pushHandler(new AccessHandler($basePath . '/logs/' . date('Y-m-d') . '/access.log', Logger::INFO));
+            $access = new AccessHandler($basePath . '/logs/' . date('Y-m-d') . '/access.log', Logger::INFO);
+            $access->setFormatter(new JsonFormatter());
+            static::$accessLog->pushHandler($access);
             static::$accessLog->pushProcessor(new TraceIdProcessor());
             static::$accessLog->pushProcessor(new WebProcessor());
             static::$accessLog->info("access log record");
