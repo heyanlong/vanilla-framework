@@ -19,6 +19,9 @@ namespace Vanilla\Database;
  */
 class Model
 {
+    const SOFT_ROLE_DELETE = 0;
+    const SOFT_ROLE_ACTIVE = 1;
+
     private $query;
     protected $connection = 'default';
     protected $tableName = '';
@@ -26,6 +29,12 @@ class Model
     public $exists = false;
     protected $attributes;
     protected $original;
+
+    public $softDelete = null;
+    public $softDeleteRole = [
+        self::SOFT_ROLE_DELETE => 1,
+        self::SOFT_ROLE_ACTIVE => 0
+    ];
 
     protected function newQuery()
     {

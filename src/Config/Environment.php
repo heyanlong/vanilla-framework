@@ -18,7 +18,7 @@ class Environment
 
             if ($redisEnvSupport == 'enable') {
                 $redisType = $_ENV['REDIS_ENV_TYPE'] ?? '';
-                $uri = $_ENV['REDIS_ENV_HOST'] ?? '';
+                $uri = $_ENV['REDIS_ENV_URI'] ?? '';
                 $masterName = $_ENV['REDIS_ENV_MASTER_NAME'] ?? '';
                 $redisPath = $_ENV['REDIS_ENV_PATH'] ?? '';
                 $password = $_ENV['REDIS_ENV_PASS'] ?? '';
