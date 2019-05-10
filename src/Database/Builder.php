@@ -178,6 +178,40 @@ class Builder
         }
     }
 
+    public function delete()
+    {
+        $model = $this->getModel();
+        // object call
+        if ($model->exists) {
+
+        } else {
+            if ($model->softDelete !== null) {
+                // to update
+                return $this->update($model->softDelete, $model->softDeleteRole[$model::SOFT_ROLE_DELETE]);
+            } else {
+                // to delete
+                try {
+                    if(count($this->whereConditions) <= 0) {
+                        throw new DBException("Delete failed, need where condition", 0);
+                    }
+                    $pdo = Connector::getInstance($this->getModel()->getConnection());
+                    $statement = $this->prepareDeleteSQL();
+                    $parameters = $this->vars;
+                    $stmt = $pdo->prepare($statement);
+                    $start = microtime(true);
+                    $stmt->execute($parameters);
+                    $end = microtime(true);
+                    $rowCount = $stmt->rowCount();
+
+                    info(sprintf($this->getLogFormat(), ($end - $start) * 1000, $rowCount, $this->toSql($statement, $parameters)));
+                    return $rowCount;
+                } catch (\PDOException $e) {
+                    throw new DBException($e->getMessage(), $e->getCode());
+                }
+            }
+        }
+    }
+
     public function save()
     {
         $model = $this->getModel();
@@ -235,6 +269,10 @@ class Builder
     private function prepareUpdateSQL($sql)
     {
         return sprintf("UPDATE %s SET %s%s", $this->getModel()->getTableName(), $sql, $this->addExtraSpaceIfExist($this->combinedConditionSql()));
+    }
+
+    private function prepareDeleteSQL() {
+        return sprintf("DELETE FROM %s%s", $this->getModel()->getTableName(), $this->addExtraSpaceIfExist($this->combinedConditionSql()));
     }
 
     private function prepareQuerySQL()
