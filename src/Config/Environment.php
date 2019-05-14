@@ -52,6 +52,7 @@ class Environment
                         fwrite($cacheFileHandle, $envContent);
                         flock($cacheFileHandle, LOCK_UN);
                     }
+                    fclose($cacheFileHandle);
                 }
             }
         } else {
