@@ -14,6 +14,14 @@ class Environment
             $dotenv = Dotenv::create($path);
             $dotenv->load();
 
+            $systemEnv = get_cfg_var('vanilla.env');
+            if ($systemEnv !== false) {
+                if (file_exists($path . DIRECTORY_SEPARATOR . '.env.' . $systemEnv)) {
+                    $dotenv = Dotenv::create($path, '.env.' . $systemEnv);
+                    $dotenv->load();
+                }
+            }
+
             $redisEnvSupport = $_ENV['REDIS_ENV_SUPPORT'] ?? '';
 
             if ($redisEnvSupport == 'enable') {
