@@ -31,9 +31,13 @@ class Connector
             $password = config('db.' . $name . '.password') ? config('db.' . $name . '.password') : null;
 
             try {
-                self::$conns[$name] = new PDO($dsn, $username, $password);
-                self::$conns[$name]->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-                self::$conns[$name]->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::ERRMODE_EXCEPTION);
+
+                self::$conns[$name] = new PDO($dsn, $username, $password, [
+                    PDO::ATTR_TIMEOUT => env('PDO_ATTR_TIMEOUT', 30),
+                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+                ]);
+
                 foreach ($commands as $value) {
                     self::$conns[$name]->exec($value);
                 }
