@@ -8,17 +8,19 @@ use Predis\Client;
 
 class Environment
 {
+    private static $redisEnv = null;
+
     public static function load(string $path)
     {
         if (file_exists($path . DIRECTORY_SEPARATOR . '.env')) {
             $dotenv = Dotenv::create($path);
-            $dotenv->load();
+            $dotenv->overload();
 
             $systemEnv = get_cfg_var('vanilla.env');
             if ($systemEnv !== false) {
                 if (file_exists($path . DIRECTORY_SEPARATOR . '.env.' . $systemEnv)) {
                     $dotenv = Dotenv::create($path, '.env.' . $systemEnv);
-                    $dotenv->load();
+                    $dotenv->overload();
                 }
             }
 
@@ -33,12 +35,16 @@ class Environment
                     // check file
                     if (file_exists($cacheFile)) {
                         $dotenv = Dotenv::create($path, '.env.cache');
-                        $dotenv->load();
+                        $dotenv->overload();
                         $lastWriteTime = filemtime($cacheFile);
                         if (time() - $lastWriteTime > 5 * 60) {
                             $cacheWrite = true;
                         }
                     } else {
+                        $env = self::getRedisEnvironmentVariable();
+                        foreach ($env as $name => $value) {
+                            self::setEnvironmentVariable($name, $value);
+                        }
                         $cacheWrite = true;
                     }
                 } else {
@@ -70,39 +76,42 @@ class Environment
 
     protected static function getRedisEnvironmentVariable()
     {
-        $redisType = $_ENV['REDIS_ENV_TYPE'] ?? '';
-        $uri = $_ENV['REDIS_ENV_URI'] ?? '';
-        $masterName = $_ENV['REDIS_ENV_MASTER_NAME'] ?? '';
-        $redisPath = $_ENV['REDIS_ENV_PATH'] ?? '';
-        $password = $_ENV['REDIS_ENV_PASS'] ?? '';
+        if (self::$redisEnv === null) {
+            $redisType = $_ENV['REDIS_ENV_TYPE'] ?? '';
+            $uri = $_ENV['REDIS_ENV_URI'] ?? '';
+            $masterName = $_ENV['REDIS_ENV_MASTER_NAME'] ?? '';
+            $redisPath = $_ENV['REDIS_ENV_PATH'] ?? '';
+            $password = $_ENV['REDIS_ENV_PASS'] ?? '';
 
-        $uri = explode(',', $uri);
+            $uri = explode(',', $uri);
 
-        $options = ['replication' => 'sentinel', 'service' => $masterName];
+            $options = ['replication' => 'sentinel', 'service' => $masterName];
 
-        if ($password != '') {
-            $options['parameters']['password'] = $password;
-        }
-
-        $count = 0;
-        $retryMax = 3;
-        $retry = false;
-
-        do {
-            try {
-                $redisServer = new Client($uri, $options);
-                $redisServer->ping();
-                $retry = false;
-            } catch (\Exception $e) {
-                $retry = true;
+            if ($password != '') {
+                $options['parameters']['password'] = $password;
             }
-            ++$count;
-        } while ($retry && $count < $retryMax);
-        if ($retry) {
-            throw new \Exception("failed to connect redis!");
+
+            $count = 0;
+            $retryMax = 3;
+            $retry = false;
+
+            do {
+                try {
+                    $redisServer = new Client($uri, $options);
+                    $redisServer->ping();
+                    $retry = false;
+                } catch (\Exception $e) {
+                    $retry = true;
+                }
+                ++$count;
+            } while ($retry && $count < $retryMax);
+            if ($retry) {
+                throw new \Exception("failed to connect redis!");
+            }
+            self::$redisEnv = $redisServer->hgetall(trim($redisPath));
         }
 
-        return $redisServer->hgetall(trim($redisPath));
+        return self::$redisEnv;
     }
 
     protected static function setEnvironmentVariable($name, $value)
