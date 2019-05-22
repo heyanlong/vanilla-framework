@@ -27,46 +27,9 @@ class Environment
             $redisEnvSupport = $_ENV['REDIS_ENV_SUPPORT'] ?? '';
 
             if ($redisEnvSupport == 'enable') {
-                $redisEnvCache = $_ENV['REDIS_ENV_CACHE'] ?? 'enable';
-                // is enable file cache
-                $cacheFile = $path . DIRECTORY_SEPARATOR . '.env.cache';
-                $cacheWrite = false;
-                if ($redisEnvCache == 'enable') {
-                    // check file
-                    if (file_exists($cacheFile)) {
-                        $dotenv = Dotenv::create($path, '.env.cache');
-                        $dotenv->overload();
-                        $lastWriteTime = filemtime($cacheFile);
-                        if (time() - $lastWriteTime > 5 * 60) {
-                            $cacheWrite = true;
-                        }
-                    } else {
-                        $env = self::getRedisEnvironmentVariable();
-                        foreach ($env as $name => $value) {
-                            self::setEnvironmentVariable($name, $value);
-                        }
-                        $cacheWrite = true;
-                    }
-                } else {
-                    $env = self::getRedisEnvironmentVariable();
-                    foreach ($env as $name => $value) {
-                        self::setEnvironmentVariable($name, $value);
-                    }
-                }
-
-                if ($cacheWrite) {
-                    // create cache and write
-                    $cacheFileHandle = fopen($cacheFile, 'w');
-                    if (flock($cacheFileHandle, LOCK_EX | LOCK_NB)) {
-                        $env = self::getRedisEnvironmentVariable();
-                        $envContent = '';
-                        foreach ($env as $name => $value) {
-                            $envContent .= $name . '=' . $value . "\r\n";
-                        }
-                        fwrite($cacheFileHandle, $envContent);
-                        flock($cacheFileHandle, LOCK_UN);
-                    }
-                    fclose($cacheFileHandle);
+                $env = self::getRedisEnvironmentVariable();
+                foreach ($env as $name => $value) {
+                    self::setEnvironmentVariable($name, $value);
                 }
             }
         } else {
