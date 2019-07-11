@@ -6,6 +6,24 @@ use Vanilla\Exceptions\DBException;
 
 class QuickTools
 {
+    private static function getSql($func = '', $sql, $bind, $data = [])
+    {
+        $str = 'func :' . $func . ' ';
+        if (!empty($sql)) {
+            if (is_array($sql)) {
+                $str .= implode(' ', $sql);
+            } elseif (is_string($sql)) {
+                $str .= $sql;
+            }
+        }
+        if (!empty($bind)) {
+            $str .= ' param:' . json_encode($bind);
+        }
+        if (!empty($data)) {
+            $str .= ' data:' . json_encode($data);
+        }
+        return $str;
+    }
 
     /**
      * 新增
@@ -42,7 +60,10 @@ class QuickTools
             foreach ($sqlBinds as $key => $value) {
                 $stmt->bindValue($key, $value);
             }
+            $start = microtime(true);
             if ($stmt->execute()) {
+                $end = microtime(true);
+                info('spend time:' . (($end - $start) * 1000) . ' sql:' . static::getSql('insert', $sql, [], $data));
                 return $pdo->lastinsertid();
             }
         } catch (\PDOException $e) {
@@ -80,7 +101,10 @@ class QuickTools
             foreach ($sqlBinds as $key => $value) {
                 $stmt->bindValue($key, $value);
             }
+            $start = microtime(true);
             $stmt->execute();
+            $end = microtime(true);
+            info('spend time:' . (($end - $start) * 1000) . ' sql:' . static::getSql('update', $sql, $binds, $data));
             return $stmt->rowCount();
         } catch (\PDOException $e) {
             throw new DBException($e->getMessage(), $e->getCode());
@@ -95,7 +119,7 @@ class QuickTools
      * @param array $value
      * @return bool
      */
-    public static function decrement($field,$where,$binds=[], $value=1)
+    public static function decrement($field, $where, $binds = [], $value = 1)
     {
         try {
             $setBinds = [];
@@ -104,7 +128,7 @@ class QuickTools
 
             $bindKey = ':set_' . $field;
             $setBinds[$bindKey] = abs(intval($value));
-            $setSql .= '`' . $field . '` = `'.$field.'` - ' . $bindKey . ', ';
+            $setSql .= '`' . $field . '` = `' . $field . '` - ' . $bindKey . ', ';
             $setSql = rtrim(trim($setSql), ',');
 
             $sql = ['update `' . static::$tableName . '` set', $setSql, $whereSql];
@@ -115,7 +139,10 @@ class QuickTools
             foreach ($sqlBinds as $key => $value) {
                 $stmt->bindValue($key, $value);
             }
+            $start = microtime(true);
             $stmt->execute();
+            $end = microtime(true);
+            info('spend time:' . (($end - $start) * 1000) . ' sql:' . static::getSql('decrement', $sql, $binds));
             return $stmt->rowCount();
         } catch (\PDOException $e) {
             throw new DBException($e->getMessage(), $e->getCode());
@@ -130,7 +157,7 @@ class QuickTools
      * @param array $value
      * @return bool
      */
-    public static function increment($field,$where,$binds=[], $value=1)
+    public static function increment($field, $where, $binds = [], $value = 1)
     {
         try {
             $setBinds = [];
@@ -139,7 +166,7 @@ class QuickTools
 
             $bindKey = ':set_' . $field;
             $setBinds[$bindKey] = abs(intval($value));
-            $setSql .= '`' . $field . '` = `'.$field.'` + ' . $bindKey . ', ';
+            $setSql .= '`' . $field . '` = `' . $field . '` + ' . $bindKey . ', ';
             $setSql = rtrim(trim($setSql), ',');
 
             $sql = ['update `' . static::$tableName . '` set', $setSql, $whereSql];
@@ -150,7 +177,10 @@ class QuickTools
             foreach ($sqlBinds as $key => $value) {
                 $stmt->bindValue($key, $value);
             }
+            $start = microtime(true);
             $stmt->execute();
+            $end = microtime(true);
+            info('spend time:' . (($end - $start) * 1000) . ' sql:' . static::getSql('increment', $sql, $binds));
             return $stmt->rowCount();
         } catch (\PDOException $e) {
             throw new DBException($e->getMessage(), $e->getCode());
@@ -174,7 +204,10 @@ class QuickTools
             foreach ($sqlBinds as $key => $value) {
                 $stmt->bindValue($key, $value);
             }
+            $start = microtime(true);
             $stmt->execute(); //执行新增操作
+            $end = microtime(true);
+            info('spend time:' . (($end - $start) * 1000) . ' sql:' . static::getSql('count', $sql, $binds));
             return $stmt->fetch()['_c'];
         } catch (\PDOException $e) {
             throw new DBException($e->getMessage(), $e->getCode());
@@ -203,7 +236,10 @@ class QuickTools
             foreach ($sqlBinds as $key => $value) {
                 $stmt->bindValue($key, $value);
             }
+            $start = microtime(true);
             $stmt->execute(); //执行新增操作
+            $end = microtime(true);
+            info('spend time:' . (($end - $start) * 1000) . ' sql:' . static::getSql('get', $sql, $binds));
             return $stmt->fetchAll(\PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
             throw new DBException($e->getMessage(), $e->getCode());
@@ -231,7 +267,10 @@ class QuickTools
             foreach ($sqlBinds as $key => $value) {
                 $stmt->bindValue($key, $value);
             }
+            $start = microtime(true);
             $stmt->execute(); //执行新增操作
+            $end = microtime(true);
+            info('spend time:' . (($end - $start) * 1000) . ' sql:' . static::getSql('first', $sql, $binds));
             return $stmt->fetch(\PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
             throw new DBException($e->getMessage(), $e->getCode());
@@ -256,7 +295,10 @@ class QuickTools
             $pdo = static::_getDrive();
             $stmt = $pdo->prepare(implode(' ', $sql));
             $stmt->bindValue(':id', $id);
+            $start = microtime(true);
             $stmt->execute(); //执行新增操作
+            $end = microtime(true);
+            info('spend time:' . (($end - $start) * 1000) . ' sql:' . static::getSql('find', $sql, $id));
             return $stmt->fetch(\PDO::FETCH_ASSOC);
         } catch (\PDOException $e) {
             throw new DBException($e->getMessage(), $e->getCode());
@@ -333,9 +375,9 @@ class QuickTools
     private static function _getDrive()
     {
         if (property_exists(static::class, 'database')) {
-            return DB::getInstance(static::$database);
+            return Connector::getInstance(static::$database);
         } else {
-            return DB::getInstance();
+            return Connector::getInstance();
         }
     }
 }
