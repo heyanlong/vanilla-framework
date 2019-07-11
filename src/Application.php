@@ -25,6 +25,7 @@ use Vanilla\Http\Request;
 use Vanilla\Http\Response;
 use Vanilla\Log\AccessHandler;
 use Vanilla\Log\TraceIdProcessor;
+use Vanilla\Log\EnterParamProcessor;
 use Vanilla\Routing\Router;
 use Monolog\Logger;
 use Monolog\Handler\StreamHandler;
@@ -86,6 +87,7 @@ class Application implements \ArrayAccess
             $access->setFormatter(new JsonFormatter());
             static::$accessLog->pushHandler($access);
             static::$accessLog->pushProcessor(new TraceIdProcessor());
+            static::$accessLog->pushProcessor(new EnterParamProcessor());
             static::$accessLog->pushProcessor(new WebProcessor());
             static::$accessLog->info("access log record");
         }
