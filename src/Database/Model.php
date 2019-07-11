@@ -5,15 +5,19 @@ namespace Vanilla\Database;
 
 /**
  * @method static Builder where($query, ...$values)
+ * @method static Builder select($query, ...$args)
  * @method static Builder order($value)
  * @method static Builder update(...$attrs)
  * @method static Builder updates($values)
+ * @method static Builder forceDelete()
+ * @method static Builder delete()
  * @method static Builder begin()
  * @method static bool commit()
  * @method static bool rollBack()
  * @method static Builder limit($limit)
  * @method static Builder offset($offset)
  * @method static first(...$where)
+ * @method static find(...$where)
  * Class Model
  * @package Vanilla\Database
  */
@@ -29,6 +33,7 @@ class Model
     public $exists = false;
     protected $attributes;
     protected $original;
+    public $returnObject = false;
 
     public $softDelete = null;
     public $softDeleteRole = [
