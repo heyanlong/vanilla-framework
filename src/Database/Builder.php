@@ -16,7 +16,7 @@ class Builder
     protected $joinConditions;
     protected $initAttrs;
     protected $assignAttrs;
-    protected $selects;
+    protected $selects = [];
     protected $omits;
     protected $orders;
     protected $preload;
@@ -27,6 +27,7 @@ class Builder
     protected $raw;
     protected $unscoped;
     protected $ignoreOrderQuery;
+    protected $withTrash = false;
 
     /**
      * @var \PDO
@@ -51,6 +52,15 @@ class Builder
         return $this->model;
     }
 
+    public function select($query, ...$args)
+    {
+        $this->selects = [
+            'query' => $query,
+            'args' => $args
+        ];
+        return $this;
+    }
+
     public function where($query, ...$values): Builder
     {
         $this->whereConditions[] = [
@@ -66,6 +76,12 @@ class Builder
         return $this;
     }
 
+    public function withTrash()
+    {
+        $this->withTrash = true;
+        return $this;
+    }
+
     public function limit($limit): Builder
     {
         $this->limit = $limit;
@@ -76,6 +92,28 @@ class Builder
     {
         $this->offset = $offset;
         return $this;
+    }
+
+    public function count()
+    {
+        try {
+            $this->select('*');
+            $this->limit(1);
+            $pdo = Connector::getInstance($this->getModel()->getConnection());
+            $statement = $this->prepareQuerySQL();
+            $statement = str_replace('SELECT *', 'SELECT COUNT(*) AS count', $statement);
+            $parameters = $this->vars;
+            $stmt = $pdo->prepare($statement);
+            $start = microtime(true);
+            $stmt->execute($parameters);
+            $end = microtime(true);
+            $res = $stmt->fetch();
+            info(sprintf($this->getLogFormat(), ($end - $start) * 1000, $res ? 1 : 0, $this->toSql($statement, $parameters)));
+            $count = $res['count'] ?? 0;
+            return intval($count);
+        } catch (\PDOException $e) {
+            throw new DBException($e->getMessage(), $e->getCode());
+        }
     }
 
     public function first(...$where)
@@ -118,20 +156,19 @@ class Builder
             $end = microtime(true);
             $res = $stmt->fetchAll();
 
-            $models = [];
+            $models = new Collection;
+            $className = get_class($this->getModel());
             if (!empty($res)) {
                 foreach ($res as $item) {
-                    $className = get_class($this->getModel());
-                    $newModel = null;
                     $newModel = new $className();
                     $newModel->exists = true;
                     $newModel->setAttributes($item);
                     $models[] = $newModel;
                 }
             }
-
             info(sprintf($this->getLogFormat(), ($end - $start) * 1000, $res ? count($res) : 0, $this->toSql($statement, $parameters)));
             return $models;
+
         } catch (\PDOException $e) {
             throw new DBException($e->getMessage(), $e->getCode());
         }
@@ -178,37 +215,58 @@ class Builder
         }
     }
 
+    public function increment()
+    {
+
+    }
+
+    public function forceDelete()
+    {
+        // to delete
+        $model = $this->getModel();
+        // object call
+        if ($model->exists) {
+            $key = $model->getPrimaryKey();
+            $this->where(sprintf("%s = ?", $model->getPrimaryKey()), $model->$key);
+        }
+
+        try {
+            if (count($this->whereConditions) <= 0) {
+                throw new DBException("Delete failed, need where condition", 0);
+            }
+            $pdo = Connector::getInstance($this->getModel()->getConnection());
+            $statement = $this->prepareDeleteSQL();
+            $parameters = $this->vars;
+            $stmt = $pdo->prepare($statement);
+            $start = microtime(true);
+            $stmt->execute($parameters);
+            $end = microtime(true);
+            $rowCount = $stmt->rowCount();
+
+            info(sprintf($this->getLogFormat(), ($end - $start) * 1000, $rowCount, $this->toSql($statement, $parameters)));
+            return $rowCount;
+        } catch (\PDOException $e) {
+            throw new DBException($e->getMessage(), $e->getCode());
+        }
+    }
+
     public function delete()
     {
         $model = $this->getModel();
         // object call
         if ($model->exists) {
+            $key = $model->getPrimaryKey();
+            $this->where(sprintf("%s = ?", $model->getPrimaryKey()), $model->$key);
+        }
 
-        } else {
-            if ($model->softDelete !== null) {
-                // to update
-                return $this->update($model->softDelete, $model->softDeleteRole[$model::SOFT_ROLE_DELETE]);
-            } else {
-                // to delete
-                try {
-                    if(count($this->whereConditions) <= 0) {
-                        throw new DBException("Delete failed, need where condition", 0);
-                    }
-                    $pdo = Connector::getInstance($this->getModel()->getConnection());
-                    $statement = $this->prepareDeleteSQL();
-                    $parameters = $this->vars;
-                    $stmt = $pdo->prepare($statement);
-                    $start = microtime(true);
-                    $stmt->execute($parameters);
-                    $end = microtime(true);
-                    $rowCount = $stmt->rowCount();
-
-                    info(sprintf($this->getLogFormat(), ($end - $start) * 1000, $rowCount, $this->toSql($statement, $parameters)));
-                    return $rowCount;
-                } catch (\PDOException $e) {
-                    throw new DBException($e->getMessage(), $e->getCode());
-                }
+        if ($model->softDelete !== null) {
+            if (count($this->whereConditions) <= 0) {
+                throw new DBException("Delete failed, need where condition", 0);
             }
+            // to update
+            return $this->update($model->softDelete, $model->softDeleteRole[$model::SOFT_ROLE_DELETE]);
+        } else {
+            return $this->forceDelete();
         }
     }
 
@@ -271,7 +329,8 @@ class Builder
         return sprintf("UPDATE %s SET %s%s", $this->getModel()->getTableName(), $sql, $this->addExtraSpaceIfExist($this->combinedConditionSql()));
     }
 
-    private function prepareDeleteSQL() {
+    private function prepareDeleteSQL()
+    {
         return sprintf("DELETE FROM %s%s", $this->getModel()->getTableName(), $this->addExtraSpaceIfExist($this->combinedConditionSql()));
     }
 
@@ -282,13 +341,35 @@ class Builder
 
     private function selectSQL()
     {
-        return '*';
+        if(count($this->selects) == 0) {
+            return '*';
+        }
+        return $this->buildSelectQuery($this->selects);
+    }
+
+    private function buildSelectQuery($clause)
+    {
+        $str = '';
+        if (is_string($clause['query'])) {
+            $str = $clause['query'];
+        } else if (is_array($clause['query'])) {
+            $str = implode(', ', $clause['query']);
+        }
+
+        $str = $this->addVars($str, $clause['args']);
+        return $str;
     }
 
     private function whereSQL(): string
     {
         $sql = '';
         $andConditions = [];
+        $primaryConditions = [];
+
+        $model = $this->getModel();
+        if ($this->withTrash === false && $model->softDelete !== null) {
+            $primaryConditions[] = sprintf("%s = %s", $model->softDelete, $model->softDeleteRole[$model::SOFT_ROLE_ACTIVE]);
+        }
 
         foreach ($this->whereConditions as $key => $value) {
             $andConditions[] = $this->buildCondition($value, true);
@@ -296,7 +377,12 @@ class Builder
 
         $combinedSQL = implode(" AND ", $andConditions);
 
-        if (strlen($combinedSQL) > 0) {
+        if (count($primaryConditions) > 0) {
+            $sql = "WHERE " . implode(' AND ', $primaryConditions);
+            if (strlen($combinedSQL) > 0) {
+                $sql = $sql . " AND (" . $combinedSQL . ")";
+            }
+        } else if (strlen($combinedSQL) > 0) {
             $sql = "WHERE " . $combinedSQL;
         }
         return $sql;
