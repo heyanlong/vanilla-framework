@@ -54,25 +54,13 @@ class Router
         }
         $appHome = $this->app->getBasePath();
 
-        if (env('APP_ENV') != 'prod') {
-            $config = BaseFastRoute\simpleDispatcher(function (BaseFastRoute\RouteCollector $r) use ($appHome) {
-                if ($this->mode == self::MODE_COMMAND) {
-                    require $appHome . '/routes/command.php';
-                } else {
-                    require $appHome . '/routes/web.php';
-                }
-            })->dispatch($method, $uri);
-        } else {
-            $config = BaseFastRoute\cachedDispatcher(function (BaseFastRoute\RouteCollector $r) use ($appHome) {
-                if ($this->mode == self::MODE_COMMAND) {
-                    require $appHome . '/routes/command.php';
-                } else {
-                    require $appHome . '/routes/web.php';
-                }
-            }, [
-                'cacheFile' => $appHome . '/routes/cache-' . $this->mode . '.php'
-            ])->dispatch($method, $uri);
-        }
+        $config = BaseFastRoute\simpleDispatcher(function (RouteCollector $r) use ($appHome) {
+            if ($this->mode == self::MODE_COMMAND) {
+                require $appHome . '/routes/command.php';
+            } else {
+                require $appHome . '/routes/web.php';
+            }
+        }, ['routeCollector' => 'Vanilla\\Routing\\RouteCollector'])->dispatch($method, $uri);
 
         switch ($config[0]) {
             case BaseFastRoute\Dispatcher::NOT_FOUND:
@@ -84,8 +72,21 @@ class Router
                     $controller = $config[1];
                     return (new $controller)->handle($this->app['argv']);
                 } else {
-                    [$controller, $action] = $config[1];
-                    return (new $controller)->$action($this->app['request']);
+                    $uses = $config[1]['uses'];
+                    $middlewares = $config[1]['middleware'];
+                    [$controller, $action] = explode('@', $uses);
+
+                    $next = function ($request) use ($controller, $action) {
+                        return (new $controller)->$action($this->app['request']);
+                    };
+
+                    foreach (array_reverse($middlewares) as $middleware) {
+                        $next = function ($request) use ($middleware, $next) {
+                            return $middleware($request, $next);
+                        };
+                    }
+
+                    return $next($this->app['request']);
                 }
         }
         return new Response();
