@@ -74,11 +74,18 @@ class Router
                 } else {
                     $uses = $config[1]['uses'];
                     $middlewares = $config[1]['middleware'];
-                    [$controller, $action] = explode('@', $uses);
+                    $next = null;
+                    if (is_callable($uses)) {
+                        $next = function ($request) use ($uses) {
+                            return $uses($this->app['request']);
+                        };
+                    } else {
+                        [$controller, $action] = explode('@', $uses);
 
-                    $next = function ($request) use ($controller, $action) {
-                        return (new $controller)->$action($this->app['request']);
-                    };
+                        $next = function ($request) use ($controller, $action) {
+                            return (new $controller)->$action($this->app['request']);
+                        };
+                    }
 
                     foreach (array_reverse($middlewares) as $middleware) {
                         $next = function ($request) use ($middleware, $next) {

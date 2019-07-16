@@ -74,7 +74,7 @@ class RouteCollector extends \FastRoute\RouteCollector
         $userMiddlewares = [];
         if (is_array($handler) && count($handler) == 2 && !isset($handler['uses'])) {
             $uses = $handler[0] . '@' . $handler[1];
-        } else if (is_string($handler)) {
+        } else if (is_string($handler) || is_callable($handler)) {
             $uses = $handler;
         } else if (is_array($handler) && isset($handler['uses'])) {
             $uses = $handler['uses'];
