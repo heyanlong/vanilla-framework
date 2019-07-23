@@ -1,5 +1,5 @@
 {
-    "name": "kaiyuan-finance/vanilla-framework",
+    "name": "heyanlong/vanilla-framework",
     "require": {
         "filp/whoops": "^2.2",
         "nikic/fast-route": "^1.3",
