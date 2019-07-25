@@ -5,6 +5,7 @@ namespace Vanilla\Database;
 
 /**
  * @method static Builder where($query, ...$values)
+ * @method static Builder joins($query, ...$values)
  * @method static Builder select($query, ...$args)
  * @method static Builder order($value)
  * @method static Builder update(...$attrs)

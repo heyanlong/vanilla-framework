@@ -13,7 +13,7 @@ class Builder
     protected $orConditions;
     protected $notConditions;
     protected $havingConditions;
-    protected $joinConditions;
+    protected $joinConditions = [];
     protected $initAttrs;
     protected $assignAttrs;
     protected $selects = [];
@@ -64,6 +64,15 @@ class Builder
     public function where($query, ...$values): Builder
     {
         $this->whereConditions[] = [
+            'query' => $query,
+            'args' => $values
+        ];
+        return $this;
+    }
+
+    public function joins($query, ...$values): Builder
+    {
+        $this->joinConditions[] = [
             'query' => $query,
             'args' => $values
         ];
@@ -341,7 +350,10 @@ class Builder
 
     private function selectSQL()
     {
-        if(count($this->selects) == 0) {
+        if (count($this->selects) == 0) {
+            if (count($this->joinConditions)) {
+                return sprintf("%s.*", $this->getModel()->getTableName());
+            }
             return '*';
         }
         return $this->buildSelectQuery($this->selects);
@@ -358,6 +370,16 @@ class Builder
 
         $str = $this->addVars($str, $clause['args']);
         return $str;
+    }
+
+    private function joinsSQL(): string
+    {
+        $joinConditions = [];
+        foreach ($this->joinConditions as $key => $value) {
+            $joinConditions[] = ltrim(rtrim($this->buildCondition($value, true), ")"), "(");
+        }
+
+        return join(" ", $joinConditions) . " ";
     }
 
     private function whereSQL(): string
@@ -443,7 +465,7 @@ class Builder
 
     private function combinedConditionSql(): string
     {
-        $joinSQL = '';
+        $joinSQL = $this->joinsSQL();
         $whereSQL = $this->whereSQL();
 
         return $joinSQL . $whereSQL . $this->orderSQL() . $this->limitAndOffsetSQL();
