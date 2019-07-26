@@ -107,9 +107,10 @@ class RouteCollector extends \FastRoute\RouteCollector
                         $middlewares[] = $middleware;
                     }
                 }
-                $middlewares = array_merge($groupMiddleware, $middlewares);
             }
         }
+
+        $middlewares = array_merge($groupMiddleware, $middlewares);
 
         $handler = [
             'uses' => $uses,
