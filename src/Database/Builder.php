@@ -12,7 +12,7 @@ class Builder
     protected $whereConditions = [];
     protected $orConditions;
     protected $notConditions;
-    protected $havingConditions;
+    protected $havingConditions = [];
     protected $joinConditions = [];
     protected $initAttrs;
     protected $assignAttrs;
@@ -79,13 +79,28 @@ class Builder
         return $this;
     }
 
-    public function order($value)
+    public function order($value): Builder
     {
         $this->orders[] = $value;
         return $this;
     }
 
-    public function withTrash()
+    public function group(string $query): Builder
+    {
+        $this->group = $query;
+        return $this;
+    }
+
+    public function having($query, ...$values): Builder
+    {
+        $this->havingConditions[] = [
+            'query' => $query,
+            'args' => $values
+        ];
+        return $this;
+    }
+
+    public function withTrash(): Builder
     {
         $this->withTrash = true;
         return $this;
@@ -468,7 +483,32 @@ class Builder
         $joinSQL = $this->joinsSQL();
         $whereSQL = $this->whereSQL();
 
-        return $joinSQL . $whereSQL . $this->orderSQL() . $this->limitAndOffsetSQL();
+        return $joinSQL . $whereSQL . $this->groupSQL() . $this->havingSQL() . $this->orderSQL() . $this->limitAndOffsetSQL();
+    }
+
+    private function groupSQL(): string
+    {
+        if (is_string($this->group) && strlen($this->group) > 0) {
+            return " GROUP BY " . $this->group;
+        }
+        return "";
+    }
+
+    private function havingSQL(): string
+    {
+        if (count($this->havingConditions) <= 0) {
+            return "";
+        }
+
+        $andConditions = [];
+
+        foreach ($this->havingConditions as $havingCondition) {
+            $andConditions[] = $this->buildCondition($havingCondition, true);
+        }
+
+        $combinedSQL = join(" AND ", $andConditions);
+
+        return " HAVING " . $combinedSQL;
     }
 
     private function orderSQL(): string

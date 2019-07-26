@@ -8,6 +8,8 @@ namespace Vanilla\Database;
  * @method static Builder joins($query, ...$values)
  * @method static Builder select($query, ...$args)
  * @method static Builder order($value)
+ * @method static Builder group($value)
+ * @method static Builder having($query, ...$values)
  * @method static Builder update(...$attrs)
  * @method static Builder updates($values)
  * @method static Builder forceDelete()
