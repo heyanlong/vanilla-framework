@@ -330,22 +330,22 @@ class Builder
     private function prepareInsertSQL($attributes)
     {
         $sql = '`' . implode('`,`', array_keys($attributes)) . '`';
-        return sprintf("INSERT INTO %s (%s) VALUES(?)", $this->getModel()->getTableName(), $sql);
+        return sprintf("INSERT INTO `%s` (%s) VALUES(?)", $this->getModel()->getTableName(), $sql);
     }
 
     private function prepareUpdateSQL($sql)
     {
-        return sprintf("UPDATE %s SET %s%s", $this->getModel()->getTableName(), $sql, $this->addExtraSpaceIfExist($this->combinedConditionSql()));
+        return sprintf("UPDATE `%s` SET %s%s", $this->getModel()->getTableName(), $sql, $this->addExtraSpaceIfExist($this->combinedConditionSql()));
     }
 
     private function prepareDeleteSQL()
     {
-        return sprintf("DELETE FROM %s%s", $this->getModel()->getTableName(), $this->addExtraSpaceIfExist($this->combinedConditionSql()));
+        return sprintf("DELETE FROM `%s`%s", $this->getModel()->getTableName(), $this->addExtraSpaceIfExist($this->combinedConditionSql()));
     }
 
     private function prepareQuerySQL()
     {
-        return sprintf("SELECT %s FROM %s %s", $this->selectSQL(), $this->getModel()->getTableName(), $this->combinedConditionSql());
+        return sprintf("SELECT `%s` FROM %s %s", $this->selectSQL(), $this->getModel()->getTableName(), $this->combinedConditionSql());
     }
 
     private function selectSQL()
