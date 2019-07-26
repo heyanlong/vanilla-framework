@@ -345,7 +345,7 @@ class Builder
 
     private function prepareQuerySQL()
     {
-        return sprintf("SELECT `%s` FROM %s %s", $this->selectSQL(), $this->getModel()->getTableName(), $this->combinedConditionSql());
+        return sprintf("SELECT %s FROM `%s` %s", $this->selectSQL(), $this->getModel()->getTableName(), $this->combinedConditionSql());
     }
 
     private function selectSQL()
