@@ -9,7 +9,7 @@ class TraceIdProcessor implements ProcessorInterface
 {
     public function __invoke(array $record)
     {
-        $record['extra']['traceId'] = traceId();
+        $record['extra']['traceId'] = uuid('v4', true);
         return $record;
     }
 
