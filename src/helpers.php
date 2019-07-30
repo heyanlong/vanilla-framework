@@ -132,10 +132,25 @@ function session($key = null, $default = null)
 
 }
 
+function traceId()
+{
+    static $traceId;
+
+    if (empty($traceId) && !empty($_SERVER[strtoupper('HTTP_X_Ca_Traceid')])) {
+        $traceId = $_SERVER[strtoupper('HTTP_X_Ca_Traceid')];
+    }
+
+    if (empty($traceId)) {
+        $traceId = uuid();
+    }
+
+    return $traceId;
+}
+
 function uuid($version = 'v4', $request = false)
 {
-    if (isset($_SERVER[strtoupper('HTTP_X_Ca_Traceid')]) && $request) {
-        return $_SERVER[strtoupper('HTTP_X_Ca_Traceid')];
+    if ($request) {
+        return traceId();
     }
 
     $uuid = \Ramsey\Uuid\Uuid::uuid4();
