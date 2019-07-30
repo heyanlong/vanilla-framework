@@ -134,8 +134,14 @@ function session($key = null, $default = null)
 
 function uuid($version = 'v4', $request = false)
 {
-    if (isset($_SERVER[strtoupper('HTTP_X_Ca_Traceid')]) && $request) {
-        return $_SERVER[strtoupper('HTTP_X_Ca_Traceid')];
+    static $traceId = null;
+    if ($request) {
+        if (isset($_SERVER[strtoupper('HTTP_X_Ca_Traceid')])) {
+            $traceId = $_SERVER[strtoupper('HTTP_X_Ca_Traceid')];
+        } else if($traceId === null) {
+            $traceId = uuid();
+        }
+        return $traceId;
     }
 
     $uuid = \Ramsey\Uuid\Uuid::uuid4();
